@@ -56,7 +56,7 @@ class Block:
         self.data = data
         self.sent_log = sent_log
         self.received_log = received_log
-        self.VM_state = VM_state
+        self.vm_state = vm_state
 
         check = self.is_valid()
         assert check[0], check[1]

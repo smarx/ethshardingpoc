@@ -13,15 +13,17 @@ contract SentMessageLogger {
     uint TTL
   );
 
-  uint TTL = 30; // some number of blocks 
+  uint TTL = 30; // some number of blocks
 
-  function send(uint _shard_ID, uint _sendGas, address _sendToAddress, bytes _data) 
+  function send(uint _shard_ID, uint _sendGas, address _sendToAddress, bytes _data)
     external
     payable
   {
     uint base = block.number;
     uint value = msg.value;
     address sender = msg.sender;
+
+    address(0x0123456789012345678901234567890123456789).transfer(msg.value);
 
     emit SentMessage(
       _shard_ID,

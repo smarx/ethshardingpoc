@@ -9,6 +9,7 @@ name = "pypi"
 
 pusher = "*"
 pusherclient = "*"
+"web3" = "*"
 
 
 [dev-packages]

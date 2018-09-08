@@ -23,6 +23,7 @@ contract SentMessageLogger {
     uint value = msg.value;
     address sender = msg.sender;
 
+    // TODO: Remove this. Just here for debugging.
     address(0x0123456789012345678901234567890123456789).transfer(msg.value);
 
     emit SentMessage(

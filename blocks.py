@@ -5,8 +5,9 @@ SHARD_IDS = [0, 1, 2]
 
 class MessagePayload:
     ''' has properties necessary to create tx on the new shard '''
-    def init(self, to, value, data):
-        self.to = to
+    def init(self, fromAddress, toAddress, value, data):
+        self.fromAddress = fromAddress
+        self.toAddress = toAddress
         self.value = value
         self.data = data
         # the special transaction pusher address will have these values hard coded 

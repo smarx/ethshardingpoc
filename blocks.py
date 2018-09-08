@@ -1,8 +1,9 @@
+from genesis_state import genesis_state
+
 SHARD_IDS = [0, 1, 2]
 
 
-# Maurelian: please give message data format (for txs)
-
+# [DONE] Maurelian: please give message data format (for txs)
 class MessagePayload:
     ''' has properties necessary to create tx on the new shard '''
     def init(self, fromAddress, toAddress, value, data):
@@ -54,8 +55,9 @@ class ReceivedLog:
 
 
 # Maurelian: please replace VM_state = None as default for genesis blocks to some initial VM state (balances)
+    #  hmmmm... is that necessary?
 class Block:
-    def init(self, ID, prevblock=None, data=None, sent_log=None, received_log=None, vm_state=None):
+    def init(self, ID, prevblock=None, data=None, sent_log=None, received_log=None, vm_state=genesis_state):
         if sent_log is None:
             sent_log = SentLog()
         if received_log is None:

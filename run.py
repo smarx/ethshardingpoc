@@ -1,5 +1,6 @@
 import json
 import subprocess
+import os
 
 import blocks
 from web3 import Web3
@@ -7,6 +8,13 @@ from web3 import Web3
 abi = json.loads('[{"constant":false,"inputs":[{"name":"_shard_ID","type":"uint256"},{"name":"_sendGas","type":"uint256"},{"name":"_sendToAddress","type":"address"},{"name":"_data","type":"bytes"}],"name":"send","outputs":[],"payable":true,"stateMutability":"payable","type":"function"},{"anonymous":false,"inputs":[{"indexed":true,"name":"shard_ID","type":"uint256"},{"indexed":false,"name":"sendGas","type":"uint256"},{"indexed":false,"name":"sendFromAddress","type":"address"},{"indexed":false,"name":"sendToAddress","type":"address"},{"indexed":false,"name":"value","type":"uint256"},{"indexed":false,"name":"data","type":"bytes"},{"indexed":true,"name":"base","type":"uint256"},{"indexed":false,"name":"TTL","type":"uint256"}],"name":"SentMessage","type":"event"}]')
 
 web3 = Web3()
+
+print(os.getenv("_system_type"))
+
+vladvm_path = './vladvm-ubuntu'
+if(os.getenv("_system_type")):
+  vladvm_path = './vladvm-macos'
+
 
 contract = web3.eth.contract(address='0x000000000000000000000000000000000000002A', abi=abi)
 tx = contract.functions.send(1, 300000, '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF', '0x1234').buildTransaction({ "gas": 3000000, "gasPrice": "0x2", "nonce": "0x0", "value": 5 })
@@ -92,7 +100,7 @@ vm_state = {
     ]
 }
 
-vladvm = subprocess.Popen(['./vladvm-macos', 'apply', '/dev/stdin'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+vladvm = subprocess.Popen([vladvm_path, 'apply', '/dev/stdin'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 out = vladvm.communicate(json.dumps(vm_state).encode())[0].decode('utf-8')
 print(out)
 new_state = json.loads(out)

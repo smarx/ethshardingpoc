@@ -3,7 +3,7 @@ SHARD_IDS = [0, 1, 2]
 
 # Maurelian: please give message data format (for txs)
 
-class Message_Data:
+class MessageData:
     pass
 
 class Message:
@@ -12,7 +12,7 @@ class Message:
         self.base = base
         self.TTL = TTL
 
-class Sent_Log:
+class SentLog:
     def init(self):
         self.log = dict.fromkeys(SHARD_IDS)
         for ID in SHARD_IDS:
@@ -27,28 +27,30 @@ class Sent_Log:
         return self
 
 
-class Received_Log:
+class ReceivedLog:
     def init(self):
-        self.sources = dict.fromkeys(SHARD_IDS)
-        self.log = dict.fromkeys(SHARD_IDS)
-        for ID in SHARD_IDS:
-            self.sources[ID] = None
-            self.log[ID] = []
+        self.sources = { ID: None for ID in SHARD_IDS }
+        self.log = { ID: [] for ID in SHARD_IDS }
 
-    def add_received_message(self, shard_ID, message):
-        self.log[shard_ID].append(message)
+    def add_received_message(self, shard_id, message):
+        self.log[shard_id].append(message)
 
     # also adds sources, a map from SHARD IDS to blocks
-    def add_received_messages(self, sources, shard_IDs, messages):
+    def add_received_messages(self, sources, shard_ids, messages):
         self.sources = sources
-        for i in xrange(len(shard_IDs)):
+        for i in range(len(shard_ids)):
             self.add_sent_message(shard_IDs[i], messages[i])
         return self
 
 
 # Maurelian: please replace VM_state = None as default for geneis blocks to some initial VM state (balances)
 class Block:
-    def init(self, ID, prevblock=None, data=None, sent_log=Sent_Log(), received_log=Received_Log(), VM_state=None):
+    def init(self, ID, prevblock=None, data=None, sent_log=None, received_log=None, vm_state=None):
+        if sent_log is None:
+            sent_log = SentLog()
+        if received_log is None:
+            received_log = ReceivedLog()
+
         self.shard_ID = ID
         self.prevblock = prevblock
         self.data = data
@@ -94,21 +96,21 @@ class Block:
             prev_num_sent = len(self.prevblock.sent_log.log[ID])
             num_new_sent = num_sent - prev_num_sent
             assert num_new_sent >= 0, "expected growing sent log"
-            for i in xrange(num_new_sent):
+            for i in range(num_new_sent):
                 new.append(self.sent_log.log[ID][prev_num_sent + i])
             new_sent[ID] = new
 
         return new_sent
 
     def newly_received(self):
-        new_received = dict.fromkeys(SHARD_IDS)
+        new_received = {}
         for ID in SHARD_IDS:
             new = []
             num_received = len(self.received_log.log[ID])
             prev_num_received = len(self.prevblock.received_log.log[ID])
             num_new_received = num_received - prev_num_received
             assert num_new_received >= 0, "expected growing received log"
-            for i in xrange(num_new_received):
+            for i in range(num_new_received):
                 new.append(self.received_log.log[ID][prev_num_received + i])
             new_received[ID] = new
 
@@ -126,9 +128,9 @@ class Block:
                 return False, "expected prevblock to be a block"
         # if not isinstance(self.data, BlockData):
         #    return False, "expected block data"
-        if not isinstance(self.sent_log, Sent_Log):
+        if not isinstance(self.sent_log, SentLog):
             return False, "expected sent log"
-        if not isinstance(self.received_log, Received_Log):
+        if not isinstance(self.received_log, ReceivedLog):
             return False, "expected received_log"
         # if not isinstance(self.VM_state, EVM_State):
         #    return False, "expected an EVM State"

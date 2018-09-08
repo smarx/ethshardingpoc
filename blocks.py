@@ -3,14 +3,23 @@ SHARD_IDS = [0, 1, 2]
 
 # Maurelian: please give message data format (for txs)
 
-class MessageData:
-    pass
+class MessagePayload:
+    ''' has properties necessary to create tx on the new shard '''
+    def init(self, to, value, data):
+        self.to = to
+        self.value = value
+        self.data = data
+        # the special transaction pusher address will have these values hard coded 
+        # self.nonce = nonce 
+        # self.gasPrice = gasPrice
+        # self.gasLimit = gasLimit
 
 class Message:
-    def init(self, data, base, TTL):
+    def init(self, data, base, TTL, message_payload ):
         self.data = data
         self.base = base
         self.TTL = TTL
+        self.message_payload = message_payload 
 
 class SentLog:
     def init(self):
@@ -43,7 +52,7 @@ class ReceivedLog:
         return self
 
 
-# Maurelian: please replace VM_state = None as default for geneis blocks to some initial VM state (balances)
+# Maurelian: please replace VM_state = None as default for genesis blocks to some initial VM state (balances)
 class Block:
     def init(self, ID, prevblock=None, data=None, sent_log=None, received_log=None, vm_state=None):
         if sent_log is None:

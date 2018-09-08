@@ -7,13 +7,13 @@ class Message_Data:
 
 
 class Message:
-    def __init__(self, data, base, TTL):
+    def init(self, data, base, TTL):
         self.data = data
         self.base = base
         self.TTL = TTL
 
 class Sent_Log:
-    def __init__(self):
+    def init(self):
         self.log = dict.fromkeys(SHARD_IDS)
         for ID in SHARD_IDS:
             self.log[ID] = []
@@ -28,7 +28,7 @@ class Sent_Log:
 
 
 class Received_Log:
-    def __init__(self):
+    def init(self):
         self.sources = dict.fromkeys(SHARD_IDS)
         self.log = dict.fromkeys(SHARD_IDS)
         for ID in SHARD_IDS:
@@ -48,7 +48,7 @@ class Received_Log:
 
 # Maurelian: please replace VM_state = None as default for geneis blocks to some initial VM state (balances)
 class Block:
-    def __init__(self, ID, prevblock=None, data=None, sent_log=Sent_Log(), received_log=Received_Log(), VM_state=None):
+    def init(self, ID, prevblock=None, data=None, sent_log=Sent_Log(), received_log=Received_Log(), VM_state=None):
         self.shard_ID = ID
         self.prevblock = prevblock
         self.data = data
@@ -59,59 +59,32 @@ class Block:
         check = self.is_valid()
         assert check[0], check[1]
 
-    def is_valid(self):
+    def is_in_chain(self, block):
+        assert isinstance(block, Block), "expected block"
+        if self == block:
+            return True
 
-        '''
-        Type checking each value of the block tuple:
-        '''
+        if self.prevblock is None:
+            return False
 
-        if self.shard_ID not in SHARD_IDS:
-            return False, "expected a shard ID"
-        if self.prevblock is not None:
-            if not isinstance(self.prevblock, Block):
-                return False, "expected prevblock to be a block"
-        # if not isinstance(self.data, BlockData):
-        #    return False, "expected block data"
-        if not isinstance(self.sent_log, Sent_Log):
-            return False, "expected sent log"
-        if not isinstance(self.received_log, Received_Log):
-            return False, "expected received_log"
-        # if not isinstance(self.VM_state, EVM_State):
-        #    return False, "expected an EVM State"
-
-        '''
-        Type check consistency conditions between the:
-        '''
-
-        # check that the prev block is on the same shard as this block
-        if self.prevblock is not None:
-            if self.shard_ID != self.prevblock.shard_ID:
-                return False, "prevblock should be on same shard as this block"
-
-        # bases for shard i are on shard i
-        for ID in SHARD_IDS:
-            for message in self.sent_log.log[ID]:  # warning, checks for all messages of all time, not just new ones
-                if message.base.shard_ID != ID:
-                    return False, "message sent to shard i has base on shard j != i"
-        for message in self.received_log.log[ID]:  # warning, checks for all messages of all time, not just new ones
-            if message.base.shard_ID != self.shard_ID:
-                return False, "received message with base on different shard"
-        for ID in SHARD_IDS:
-            if self.received_log.sources[ID].shard_ID != ID:
-                return False, "source for shard i on shard j != i"
-
-        
+        return self.prevblock.is_in_chain(block)
 
 
-        return True
+    def in_prev_n(self, block, n):
+        assert isinstance(n, int), "expected integer"
+        assert n >= -1, "expected n at least -1"
+        assert isinstance(block, Block)
 
-# To Do:
-# check if messages are received by TTL of bases
-# check that prev sent/received are prefixes of current sent/received
-# check that bases are monotonically increasing
-# check "receive sent from base"
-# check "sent forces recieve"
-# check "source autheticity, source/base agreement, and only receive sent"
+        if n == -1:
+            return False
+
+        if self == block:
+            return True
+
+        if self.prevblock is None:
+            return False
+
+        return self.prevblock.in_prev_n(block, n-1)
 
     def newly_sent(self):
         new_sent = dict.fromkeys(SHARD_IDS)
@@ -141,3 +114,112 @@ class Block:
 
         return new_received
 
+    def is_valid(self):
+
+        '''
+        Type checking each value of the block tuple:
+        '''
+if self.shard_ID not in SHARD_IDS:
+            return False, "expected a shard ID"
+        if self.prevblock is not None:
+            if not isinstance(self.prevblock, Block):
+                return False, "expected prevblock to be a block"
+        # if not isinstance(self.data, BlockData):
+        #    return False, "expected block data"
+        if not isinstance(self.sent_log, Sent_Log):
+            return False, "expected sent log"
+        if not isinstance(self.received_log, Received_Log):
+            return False, "expected received_log"
+        # if not isinstance(self.VM_state, EVM_State):
+        #    return False, "expected an EVM State"
+
+        '''
+        Type check consistency conditions between the values of the block
+        '''
+
+        if self.prevblock is not None:
+
+            # check that the prev block is on the same shard as this block
+            if self.shard_ID != self.prevblock.shard_ID:
+                return False, "prevblock should be on same shard as this block"
+
+            new_sent_messages = self.newly_sent()
+            new_received_messages = self.newly_received()
+
+            for ID in SHARD_IDS:
+
+                # bases for messages sent to shard i are on shard i
+                for message in new_sent_messages[ID]:
+                    if message.base.shard_ID != ID:
+                        return False, "message sent to shard i has base on shard j != i"
+
+                # bases for received messages are on this shard
+                for message in new_received_messages[ID]:
+                    if message.base.shard_ID != self.shard_ID:
+                        return False, "received message with base on different shard"
+
+                # sources of messages received from shard i are on shard i
+                if self.received_log.sources[ID].shard_ID != ID:
+                    return False, "source for shard i on shard j != i"
+
+                # messages are received by the TTL
+                for message in new_sent_messages[ID]:
+                    if not self.in_prev_n(message.base, message.TTL):
+                        return False, "message not received within TTL of its base"
+
+                # previous sent log is a prefix of current sent log
+                prev_num_sent = len(self.prevblock.sent_log.log[ID])
+                for i in xrange(prev_num_sent):
+                    if self.prevblock.sent_log.log[ID][i] != self.sent_log.log[ID][i]:
+                        return False
+
+                # previous received log is a prefix of current sent log
+                prev_num_received = len(self.prevblock.sent_log.log[ID])
+                for i in xrange(prev_num_received):
+                    if self.prevblock.received_log.log[ID][i] != self.received_log.log[ID][i]:
+                        return False
+
+                # bases of sent messages are monotonic
+                last_old_sent_message = self.sent_log.log[ID][prev_num_sent - 1]
+                first_time = True
+                for message in new_sent_messages[ID]:
+                    if first_time:
+                        m1 = last_old_sent_message
+                        m2 = message
+                        first_time = False
+                    if not first_time:
+                        m1 = m2
+                        m2 = message
+
+                    if not m2.base.is_in_chain(m1.base):
+                        return False, "expected bases to be monotonic"
+
+                # bases of received messages are monotonic
+                last_old_received_message = self.received_log.log[ID][prev_num_received - 1]
+                first_time = True
+                for message in new_received_messages[ID]:
+                    if first_time:
+                        m1 = last_old_received_message
+                        m2 = message
+                        first_time = False
+                    if not first_time:
+                        m1 = m2
+                        m2 = message
+
+                    if not m2.base.is_in_chain(m1.base):
+                        return False, "expected bases to be monotonic"
+# sources are montonic
+                if not self.received_log.sources[ID].is_in_chain(self.prevblock.received_log.sources[ID]):
+                    return False, "expected sources to be monotonic"
+
+                # check that the received messages are sent by the source
+                for i in xrange(len(self.received_log.log[ID])):
+                    if self.received_log.log[ID][i] != self.received_log.sources[ID].sent_log.log[self.Shard_ID][i]:
+                        return False, "expected the received messages were sent by source"
+
+        return True
+
+# To Do:
+# check "receive sent from base"
+# check "sent forces recieve"
+# check "source autheticity, source/base agreement, and only receive sent"

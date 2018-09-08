@@ -210,12 +210,13 @@ class Block:
 
                     if not m2.base.is_in_chain(m1.base):
                         return False, "expected bases to be monotonic"
-# sources are montonic
+
+                # sources are montonic
                 if not self.received_log.sources[ID].is_in_chain(self.prevblock.received_log.sources[ID]):
                     return False, "expected sources to be monotonic"
 
                 # check that the received messages are sent by the source
-                for i in xrange(len(self.received_log.log[ID])):
+                for i in range(len(self.received_log.log[ID])):
                     if self.received_log.log[ID][i] != self.received_log.sources[ID].sent_log.log[self.Shard_ID][i]:
                         return False, "expected the received messages were sent by source"
 

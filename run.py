@@ -9,12 +9,9 @@ abi = json.loads('[{"constant":false,"inputs":[{"name":"_shard_ID","type":"uint2
 
 web3 = Web3()
 
-print(os.getenv("_system_type"))
-
 vladvm_path = './vladvm-ubuntu'
 if(os.getenv("_system_type")):
-  vladvm_path = './vladvm-macos'
-
+    vladvm_path = './vladvm-macos'
 
 contract = web3.eth.contract(address='0x000000000000000000000000000000000000002A', abi=abi)
 tx = contract.functions.send(1, 300000, '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF', '0x1234').buildTransaction({ "gas": 3000000, "gasPrice": "0x2", "nonce": "0x0", "value": 5 })

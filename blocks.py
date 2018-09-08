@@ -4,7 +4,7 @@ SHARD_IDS = [0, 1, 2]
 # Maurelian: please give message data format (for txs)
 
 class Message_Data:
-
+    pass
 
 class Message:
     def init(self, data, base, TTL):
@@ -119,7 +119,7 @@ class Block:
         '''
         Type checking each value of the block tuple:
         '''
-if self.shard_ID not in SHARD_IDS:
+        if self.shard_ID not in SHARD_IDS:
             return False, "expected a shard ID"
         if self.prevblock is not None:
             if not isinstance(self.prevblock, Block):

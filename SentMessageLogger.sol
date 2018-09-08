@@ -15,8 +15,9 @@ contract SentMessageLogger {
 
   uint TTL = 30; // some number of blocks
 
+  // public instead of external due to https://github.com/ethereum/solidity/issues/3493
   function send(uint _shard_ID, uint _sendGas, address _sendToAddress, bytes _data)
-    external
+    public
     payable
   {
     uint base = block.number;

@@ -3,7 +3,7 @@ import json
 import os
 import subprocess
 
-import blocks
+from blocks import *
 from web3 import Web3
 from genesis_state import genesis_state
 
@@ -84,25 +84,36 @@ def apply_to_state(pre_state=vm_state, tx=[]): #, receivedMap):
     vladvm = subprocess.Popen([vladvm_path, 'apply', '/dev/stdin'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
     # pipe state into that process 
-    out = vladvm.communicate(json.dumps(vm_state).encode())[0].decode('utf-8')
+    out = vladvm.communicate(json.dumps(transition_inputs).encode())[0].decode('utf-8')
     result = json.loads(out)
     new_state = convert_state_to_pre(result)
     
-    print(result)
     # look through logs for outgoing messages
-    # sent_log = SentLog()
-    # for receipt in result['receipts']:
-    #     if receipt['logs'] is not None:
-    #         for log in receipt['logs']:
-    #             log['topics'] = [binascii.unhexlify(t[2:]) for t in log['topics']]
-    #             log['data'] = binascii.unhexlify(log['data'][2:])
-    #         print(contract.events.SentMessage().processReceipt(receipt))
-    
+    sent_log = SentLog()
+    for receipt in result['receipts']:
+        if receipt['logs'] is not None:
+            for log in receipt['logs']:
+                topics = [binascii.unhexlify(t[2:]) for t in log['topics']]
+                data = binascii.unhexlify(log['data'][2:])
+                
+                shard_id = topics[1]
+                send_to_address = topics[2]
+                value = 100 # not sure how to extract from data
 
+                payload = MessagePayload("0x0", send_to_address, 100, data)
+                # not really complete below here
+                message = Message( data, base, payload)
+                sent_log.add_sent_message(shard_id, message)
+                print(topics)
+
+            # print(contract.events.SentMessage().processReceipt(receipt))
+        #         # print(log) # ugly output, not sure how to make that into a message...
+
+        #         # sent_log.add_sent_message()
     return new_state
 
 
 new_state = apply_to_state(vm_state, transactions)
-print(json.dumps(new_state))
+# print(json.dumps(new_state))
 
 

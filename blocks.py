@@ -18,7 +18,7 @@ class MessagePayload:
 
 class Message:
     def __init__(self, data, base, TTL, message_payload ):
-        self.data = data
+        # self.data = data # payload replaces this, no?
         self.base = base
         self.TTL = TTL
         self.message_payload = message_payload 

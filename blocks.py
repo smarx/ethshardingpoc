@@ -1,4 +1,6 @@
-SHARD_IDS = [0, 1, 2]
+#from genesis_state import genesis_state
+
+from config import SHARD_IDS
 
 # [DONE] Maurelian: please give message data format (for txs)
 class MessagePayload:
@@ -237,18 +239,21 @@ class Block:
 
             # sources are montonic
             if self.received_log.sources[ID] is not None:
-                if not self.received_log.sources[ID].is_in_chain(self.prevblock.received_log.sources[ID]):
-                    return False, "expected sources to be monotonic"
+                if self.prevblock.received_log.sources[ID] is not None:
+                    if not self.received_log.sources[ID].is_in_chain(self.prevblock.received_log.sources[ID]):
+                        return False, "expected sources to be monotonic"
 
                 # sources after bases
-                source = self.received_log.sources[ID]
-                base = last_old_sent_message.base
-                if not source.is_in_chain(base):
-                    return False, "expected bases to be in the chaing of sources"
+                if len(self.prevblock.sent_log.log[ID]) > 0:
+                    source = self.received_log.sources[ID]
+                    base = last_old_sent_message.base
+                    if not source.is_in_chain(base):
+                        return False, "expected bases to be in the chaing of sources"
 
-                base = newly_sent_messages[ID][-1].base
-                if not source.is_in_chain(base):
-                    return False, "expected bases to be in the chain of sources"
+                if len(new_sent_messages[ID]) > 0:
+                    base = new_sent_messages[ID][-1].base
+                    if not source.is_in_chain(base):
+                        return False, "expected bases to be in the chain of sources"
 
 
             '''
@@ -269,7 +274,7 @@ class Block:
 
                 # their sent messages are received by the TTL as seen from our sources
                 source = self.received_log.sources[ID]
-                for m in source.sent_log.log[self.Shard_ID]:  # inefficient
+                for m in source.sent_log.log[self.shard_ID]:  # inefficient
                     if m.base.height + m.TTL >= self.height:
                         if m not in self.received_log.log[ID]:
                             return False, "expected all expired messages in source to be recieved"
@@ -284,7 +289,7 @@ class Block:
                 for m1 in self.sent_log.log[ID]:  # super inefficient
                     for m2 in self.sent_log.log[ID]:
                         if m1.base.height + m1.TTL >= m2.base.height:
-                            if m1 not in m2.base.received_log.log[self.Shard_ID]:
+                            if m1 not in m2.base.received_log.log[self.shard_ID]:
                                 return False, "expected sent messages to be received by the TTL"
 
         return True, "Valid block"

@@ -119,10 +119,10 @@ def test():
 
     result = sharded_fork_choice(starting_blocks, blocks, weighted_blocks)
 
-    print "0", result[0].height
-    print "1", result[1].height
-    print "2", result[2].height
+    print("0", result[0])
+    print("1", result[1])
+    print("2", result[2])
 
-    print "height f", f.height
+    print("height f", f.height)
 
     return result

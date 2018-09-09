@@ -4,6 +4,8 @@ from validator import Validator
 from config import VALIDATOR_NAMES
 import random as rand
 
+from generate_transactions import gen_cross_shard_tx, gen_in_shard_tx, gen_alice_and_bob_tx
+
 
 # Experiment parameters
 NUM_PROPOSALS = 100
@@ -19,9 +21,11 @@ for name in VALIDATOR_NAMES:
 
 mempools = {}
 for ID in SHARD_IDS:
-    mempools[ID] = []
+    mempools[ID] = [
+        # gen_alice_and_bob_tx()
+    ]
 
-    #fill me up!
+    
 
 
 viewables = {}
@@ -40,11 +44,11 @@ for i in range(NUM_PROPOSALS):
             data.append(payload)
             mempools[rand_ID].remove(payload)
 
-    print "rand_ID", rand_ID
-    print "data", data
+    print( "rand_ID", rand_ID)
+    print( "data", data)
     new_message = validators[next_proposer].make_new_consensus_message(rand_ID, data)
 
-    print "proposal", i, "shard ID", rand_ID, "block", new_message.estimate, "height", new_message.estimate.height
+    print( "proposal", i, "shard ID", rand_ID, "block", new_message.estimate, "height", new_message.estimate.height)
 
     for v in VALIDATOR_NAMES:
         if v == next_proposer:

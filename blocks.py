@@ -1,4 +1,4 @@
-#from genesis_state import genesis_state
+from genesis_state import genesis_state
 
 from config import SHARD_IDS
 import random as rand
@@ -34,7 +34,7 @@ class SentLog:
         self.log[shard_ID].append(message)
 
     def add_sent_messages(self, shard_IDs, messages):
-        for i in xrange(len(shard_IDs)):
+        for i in range(len(shard_IDs)):
             self.add_sent_message(shard_IDs[i], messages[i])
         return self
 
@@ -57,7 +57,7 @@ class ReceivedLog:
 # Maurelian: please replace VM_state = None as default for genesis blocks to some initial VM state (balances)
     #  hmmmm... is that necessary?  I can't compile bc I don't have web3, so not for now!
 class Block:
-    def __init__(self, ID, prevblock=None, data=None, sent_log=None, received_log=None, vm_state=None):  # genesis_state):
+    def __init__(self, ID, prevblock=None, data=None, sent_log=None, received_log=None, vm_state=genesis_state):
         if sent_log is None:
             sent_log = SentLog()
         if received_log is None:
@@ -201,13 +201,13 @@ class Block:
 
             # previous sent log is a prefix of current sent log
             prev_num_sent = len(self.prevblock.sent_log.log[ID])
-            for i in xrange(prev_num_sent):
+            for i in range(prev_num_sent):
                 if self.prevblock.sent_log.log[ID][i] != self.sent_log.log[ID][i]:
                     return False, "expected current sent log to be an extension of the previous"
 
             # previous received log is a prefix of current received log
             prev_num_received = len(self.prevblock.received_log.log[ID])
-            for i in xrange(prev_num_received):
+            for i in range(prev_num_received):
                 if self.prevblock.received_log.log[ID][i] != self.received_log.log[ID][i]:
                     return False, "expected current received log to be an extension of the previous"
 

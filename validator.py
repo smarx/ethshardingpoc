@@ -4,6 +4,7 @@ from config import SHARD_IDS
 from config import VALIDATOR_NAMES
 from config import VALIDATOR_WEIGHTS
 from config import TTL_CONSTANT
+from run import apply_to_state
 
 from fork_choice import sharded_fork_choice
 
@@ -108,18 +109,14 @@ class Validator:
             current_received_log_size = len(received_log.log[ID])
             assert current_received_log_size >= previous_received_log_size, "did not expect log size to shrink"
 
-            newly_received_messages[ID] = []
-            for i in xrange(current_received_log_size - previous_received_log_size):
-                newly_received_messages[ID].append(received_log.log[ID][previous_received_log_size + i])
+            newly_received_messages[ID] = received_log.log[ID][previous_received_log_size:]
 
         # which have the following newly received payloads:
         newly_received_payloads = {}
         for ID in SHARD_IDS:
             if ID == shard_ID:
                 continue
-            newly_received_payloads[ID] = []
-            for m in newly_received_messages[ID]:
-                newly_received_payloads[ID].append(m.message_payload)
+            newly_received_payloads[ID] = [m.message_payload for m in newly_received_messages[ID]]
 
         '''
         KEY INTEGRATION HERE
@@ -127,12 +124,15 @@ class Validator:
 
         # this is where we have this function that produces the new vm state and the new outgoing payloads
         # new_vm_state, new_outgoing_payloads = INTEGRATE_HERE(prevblock.vm_state, data, newly_received_payloads)
+         
+        print(prevblock.vm_state)
+        new_vm_state, new_outgoing_payloads = apply_to_state(prevblock.vm_state, data, newly_received_payloads)
         # need new_outgoing_payloads is a dict of shard id to new payloads
-
-        new_vm_state = prevblock.vm_state
-        new_outgoing_payloads = {}
-        for ID in SHARD_IDS:
-            new_outgoing_payloads[ID] = []
+        print(new_outgoing_payloads)
+        # new_vm_state = prevblock.vm_state
+        # new_outgoing_payloads = {}
+        # for ID in SHARD_IDS:
+        #     new_outgoing_payloads[ID] = []
 
         # we now package the sent_log with new messages that deliver these payloads
         new_sent_messages = []
@@ -143,7 +143,6 @@ class Validator:
                 shard_IDs.append(ID)
         
         sent_log = prevblock.sent_log.add_sent_messages(shard_IDs, new_sent_messages)
-
         return Block(shard_ID, prevblock, data, sent_log, received_log, new_vm_state)
 
     def make_new_consensus_message(self, shard_ID, data, TTL=TTL_CONSTANT):

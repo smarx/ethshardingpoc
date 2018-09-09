@@ -4,8 +4,7 @@ from validator import Validator
 from config import VALIDATOR_NAMES
 import random as rand
 
-from generate_transactions import gen_cross_shard_tx, gen_in_shard_tx, gen_alice_and_bob_tx
-
+from generate_transactions import *
 
 # Experiment parameters
 NUM_PROPOSALS = 100
@@ -21,9 +20,7 @@ for name in VALIDATOR_NAMES:
 
 mempools = {}
 for ID in SHARD_IDS:
-    mempools[ID] = [
-        # gen_alice_and_bob_tx()
-    ]
+    mempools[ID] = gen_alice_and_bob_tx()
 
     
 
@@ -41,11 +38,11 @@ for i in range(NUM_PROPOSALS):
     for j in range(MEMPOOL_DRAIN_RATE):
         if len(mempools[rand_ID]) > 0:
             payload = mempools[rand_ID][j]
-            data.append(payload)
+            data.append(payload) # expects a payload formatted message, but we're giving it a full tx.
             mempools[rand_ID].remove(payload)
 
     print( "rand_ID", rand_ID)
-    print( "data", data)
+    print( "data", data)    
     new_message = validators[next_proposer].make_new_consensus_message(rand_ID, data)
 
     print( "proposal", i, "shard ID", rand_ID, "block", new_message.estimate, "height", new_message.estimate.height)

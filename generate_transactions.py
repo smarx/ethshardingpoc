@@ -49,11 +49,31 @@ def gen_in_shard_tx(nonce):
     in_shard_tx_formatted = format_transaction(in_shard_tx, in_shard_tx_signed)
     return in_shard_tx_formatted
 
+def gen_payloads():
+    private_key_alice = '0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318'
+    address_alice = web3.eth.account.privateKeyToAccount(private_key_alice).address.lower()[2:]
+
+    payloadA = {
+        "fromAddress": address_alice,
+        "toAddress": "0x000000000000000000000000000000000000002A",
+        "value": 100,
+        "data": cross_shard_tx["data"]
+    }
+
+    # MessagePayload(address_alice, "0x000000000000000000000000000000000000002A", 100, cross_shard_tx["data"])
+    tx = []
+    for x in range(0,100):
+        tx.append(payloadA)
+    return tx
+ 
+
+        
 def gen_alice_and_bob_tx():
     tx = []
     for x in range(0,100):
         tx.append(gen_in_shard_tx(hex(x)))
         tx.append(gen_cross_shard_tx(hex(x)))
+    print(tx[0])
     return tx
 
 

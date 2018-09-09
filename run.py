@@ -75,7 +75,7 @@ def convert_state_to_pre(state):
 #   `MessagePayload`s. (This is done via `web3.eth.account.signTransaction(…)`.)
 # function apply(vm_state, [tx], mapping(S => received)) -> (vm_state, mapping(S => received) )
 def apply_to_state(pre_state, tx, received_log):
-    print(pre_state["pre"][address]["nonce"])   
+    # print(pre_state["pre"][address]["nonce"])   
     nonce = int(pre_state["pre"][address]["nonce"], 0)
     flattened_payloads = [message.message_payload for l in received_log.values() for message in l]
     for payload in flattened_payloads:
@@ -101,8 +101,9 @@ def apply_to_state(pre_state, tx, received_log):
     vladvm = subprocess.Popen([vladvm_path, 'apply', '/dev/stdin'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
     # pipe state into that process
+    print(transition_inputs)
     out = vladvm.communicate(json.dumps(transition_inputs).encode())[0].decode('utf-8')
-    print(out)
+    print("out", out)  
     result = json.loads(out)
     new_state = {
         "env": pre_state["env"], 

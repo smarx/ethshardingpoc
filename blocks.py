@@ -1,6 +1,7 @@
 #from genesis_state import genesis_state
 
 from config import SHARD_IDS
+import random as rand
 
 # [DONE] Maurelian: please give message data format (for txs)
 class MessagePayload:
@@ -53,7 +54,6 @@ class ReceivedLog:
             self.add_sent_message(shard_IDs[i], messages[i])
         return self
 
-
 # Maurelian: please replace VM_state = None as default for genesis blocks to some initial VM state (balances)
     #  hmmmm... is that necessary?  I can't compile bc I don't have web3, so not for now!
 class Block:
@@ -69,6 +69,7 @@ class Block:
         self.sent_log = sent_log
         self.received_log = received_log
         self.vm_state = vm_state
+        self.hash = rand.randint(1, 10000000)
 
         if prevblock is None:
             self.height = 0
@@ -77,6 +78,12 @@ class Block:
 
         check = self.is_valid()
         assert check[0], check[1]
+
+    def __eq__(self, block):
+        return self.hash == block.hash
+
+    def __hash__(self):
+        return self.hash
 
     def is_in_chain(self, block):
         assert isinstance(block, Block), "expected block"
@@ -188,7 +195,6 @@ class Block:
                 if self.received_log.sources[ID].shard_ID != ID:
                     return False, "source for shard i on shard j != i"
 
-
             '''
             Monotonicity conditions
             '''
@@ -237,11 +243,11 @@ class Block:
                     if not m2.base.is_in_chain(m1.base):
                         return False, "expected bases to be monotonic"
 
-            # sources are montonic
-            if self.received_log.sources[ID] is not None:
-                if self.prevblock.received_log.sources[ID] is not None:
-                    if not self.received_log.sources[ID].is_in_chain(self.prevblock.received_log.sources[ID]):
-                        return False, "expected sources to be monotonic"
+                # sources are montonic
+                if self.received_log.sources[ID] is not None:
+                    if self.prevblock.received_log.sources[ID] is not None:
+                        if not self.received_log.sources[ID].is_in_chain(self.prevblock.received_log.sources[ID]):
+                            return False, "expected sources to be monotonic"
 
                 # sources after bases
                 if len(self.prevblock.sent_log.log[ID]) > 0:
@@ -254,7 +260,6 @@ class Block:
                     base = new_sent_messages[ID][-1].base
                     if not source.is_in_chain(base):
                         return False, "expected bases to be in the chain of sources"
-
 
             '''
             Conditions one message receipt

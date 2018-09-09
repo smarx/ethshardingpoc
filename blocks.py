@@ -1,7 +1,6 @@
 #from genesis_state import genesis_state
 
-SHARD_IDS = [0, 1, 2]
-
+from config import SHARD_IDS
 
 # [DONE] Maurelian: please give message data format (for txs)
 class MessagePayload:
@@ -18,8 +17,7 @@ class MessagePayload:
 
 
 class Message:
-    def __init__(self, data, base, TTL, message_payload ):
-        self.data = data
+    def __init__(self, base, TTL, message_payload ):
         self.base = base
         self.TTL = TTL
         self.message_payload = message_payload 

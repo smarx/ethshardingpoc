@@ -1,5 +1,5 @@
 from blocks import Block
-from blocks import SHARD_IDS
+from config import SHARD_IDS
 
 def filtered_children(block, blocks, block_filter):
     children = []

@@ -1,4 +1,4 @@
-from genesis_state import genesis_state
+#from genesis_state import genesis_state
 
 SHARD_IDS = [0, 1, 2]
 
@@ -16,12 +16,14 @@ class MessagePayload:
         # self.gasPrice = gasPrice
         # self.gasLimit = gasLimit
 
+
 class Message:
     def __init__(self, data, base, TTL, message_payload ):
         self.data = data
         self.base = base
         self.TTL = TTL
         self.message_payload = message_payload 
+
 
 class SentLog:
     def __init__(self):
@@ -55,9 +57,9 @@ class ReceivedLog:
 
 
 # Maurelian: please replace VM_state = None as default for genesis blocks to some initial VM state (balances)
-    #  hmmmm... is that necessary?
+    #  hmmmm... is that necessary?  I can't compile bc I don't have web3, so not for now!
 class Block:
-    def __init__(self, ID, prevblock=None, data=None, sent_log=None, received_log=None, vm_state=genesis_state):
+    def __init__(self, ID, prevblock=None, data=None, sent_log=None, received_log=None, vm_state=None):  # genesis_state):
         if sent_log is None:
             sent_log = SentLog()
         if received_log is None:
@@ -74,7 +76,6 @@ class Block:
             self.height = 0
         else:
             self.height = self.prevblock.height + 1
-
 
         check = self.is_valid()
         assert check[0], check[1]
@@ -154,7 +155,7 @@ class Block:
 
         #leaving out the genesis blocks for now..
         if self.prevblock is None:
-            return True
+            return True, "Genesis block taken as valid"
 
         '''
         Type check consistency conditions between the values of the block
@@ -184,9 +185,10 @@ class Block:
                 if message.base.shard_ID != self.shard_ID:
                     return False, "received message with base on different shard"
 
-            # sources of messages received from shard i are on shard i
-            if self.received_log.sources[ID].shard_ID != ID:
-                return False, "source for shard i on shard j != i"
+            if self.received_log.sources[ID] is not None:
+                # sources of messages received from shard i are on shard i
+                if self.received_log.sources[ID].shard_ID != ID:
+                    return False, "source for shard i on shard j != i"
 
 
             '''
@@ -206,88 +208,88 @@ class Block:
                     return False, "expected current received log to be an extension of the previous"
 
             # bases of sent messages are monotonic
-            last_old_sent_message = self.prevblock.sent_log.log[ID][-1]
-            first_time = True
-            for message in new_sent_messages[ID]:
-                if first_time:
-                    m1 = last_old_sent_message
-                    m2 = message
-                    first_time = False
-                if not first_time:
-                    m1 = m2
-                    m2 = message
+            if len(self.prevblock.sent_log.log[ID]) > 0:
+                last_old_sent_message = self.prevblock.sent_log.log[ID][-1]
+                first_time = True
+                for message in new_sent_messages[ID]:
+                    if first_time:
+                        m1 = last_old_sent_message
+                        m2 = message
+                        first_time = False
+                    if not first_time:
+                        m1 = m2
+                        m2 = message
 
-                if not m2.base.is_in_chain(m1.base):
-                    return False, "expected bases to be monotonic"
-
+                    if not m2.base.is_in_chain(m1.base):
+                        return False, "expected bases to be monotonic"
 
             # bases of received messages are monotonic
-            last_old_received_message = self.prevblock.received_log.log[ID][-1]
-            first_time = True
-            for message in new_received_messages[ID]:
-                if first_time:
-                    m1 = last_old_received_message
-                    m2 = message
-                    first_time = False
-                if not first_time:
-                    m1 = m2
-                    m2 = message
+            if len(self.prevblock.received_log.log[ID]) > 0:
+                last_old_received_message = self.prevblock.received_log.log[ID][-1]
+                first_time = True
+                for message in new_received_messages[ID]:
+                    if first_time:
+                        m1 = last_old_received_message
+                        m2 = message
+                        first_time = False
+                    if not first_time:
+                        m1 = m2
+                        m2 = message
 
-                if not m2.base.is_in_chain(m1.base):
-                    return False, "expected bases to be monotonic"
+                    if not m2.base.is_in_chain(m1.base):
+                        return False, "expected bases to be monotonic"
 
             # sources are montonic
-            if not self.received_log.sources[ID].is_in_chain(self.prevblock.received_log.sources[ID]):
-                return False, "expected sources to be monotonic"
+            if self.received_log.sources[ID] is not None:
+                if not self.received_log.sources[ID].is_in_chain(self.prevblock.received_log.sources[ID]):
+                    return False, "expected sources to be monotonic"
 
-            # sources after bases
-            source = self.received_log.sources[ID]
-            base = last_old_sent_message.base
-            if not source.is_in_chain(base):
-                return False, "expected bases to be in the chaing of sources"
+                # sources after bases
+                source = self.received_log.sources[ID]
+                base = last_old_sent_message.base
+                if not source.is_in_chain(base):
+                    return False, "expected bases to be in the chaing of sources"
 
-            base = newly_sent_messages[ID][-1].base
-            if not source.is_in_chain(base):
-                return False, "expected bases to be in the chain of sources"
+                base = newly_sent_messages[ID][-1].base
+                if not source.is_in_chain(base):
+                    return False, "expected bases to be in the chain of sources"
 
 
             '''
             Conditions one message receipt
             '''
+            if self.received_log.sources[ID] is not None:
 
-            # check that the received messages are sent by the source
-            # warning: inefficient
-            for i in range(len(self.received_log.log[ID])):
-                if self.received_log.log[ID][i] != self.received_log.sources[ID].sent_log.log[self.Shard_ID][i]:
-                    return False, "expected the received messages were sent by source"
+                # check that the received messages are sent by the source
+                # warning: inefficient
+                for i in range(len(self.received_log.log[ID])):
+                    if self.received_log.log[ID][i] != self.received_log.sources[ID].sent_log.log[self.Shard_ID][i]:
+                        return False, "expected the received messages were sent by source"
 
-            # newly received messages are received by the TTL
-            for message in new_received_messages[ID]:
-                if not self.in_prev_n(message.base, message.TTL):
-                    return False, "message not received within TTL of its base"
+                # newly received messages are received by the TTL
+                for message in new_received_messages[ID]:
+                    if not self.in_prev_n(message.base, message.TTL):
+                        return False, "message not received within TTL of its base"
 
-            # their sent messages are received by the TTL as seen from our sources
-            source = self.received_log.sources[ID]
-            for m in source.sent_log.log[self.Shard_ID]:  # inefficient
-                if m.base.height + m.TTL >= self.height:
-                    if m not in self.received_log.log[ID]:
-                        return False, "expected all expired messages in source to be recieved"
+                # their sent messages are received by the TTL as seen from our sources
+                source = self.received_log.sources[ID]
+                for m in source.sent_log.log[self.Shard_ID]:  # inefficient
+                    if m.base.height + m.TTL >= self.height:
+                        if m not in self.received_log.log[ID]:
+                            return False, "expected all expired messages in source to be recieved"
 
-            # our sent messages are received by the TTL as seen from our sources
-            for m in self.sent_log.log[ID]:  # inefficient
-                if m.base.height + m.TTL >= source.height:
-                    if m not in source.received_log.log[ID]:
-                        return False, "expected all expired sent messages to be received by source"
+                # our sent messages are received by the TTL as seen from our sources
+                for m in self.sent_log.log[ID]:  # inefficient
+                    if m.base.height + m.TTL >= source.height:
+                        if m not in source.received_log.log[ID]:
+                            return False, "expected all expired sent messages to be received by source"
 
-            # our sent messages are received by the TTL as seen from our bases
-            for m1 in self.sent_log.log[ID]:  # super inefficient
-                for m2 in self.sent_log.log[ID]:
-                    if m1.base.height + m1.TTL >= m2.base.height:
-                        if m1 not in m2.base.received_log.log[self.Shard_ID]:
-                            return False, "expected sent messages to be received by the TTL"
-
-
-
+                # our sent messages are received by the TTL as seen from our bases
+                for m1 in self.sent_log.log[ID]:  # super inefficient
+                    for m2 in self.sent_log.log[ID]:
+                        if m1.base.height + m1.TTL >= m2.base.height:
+                            if m1 not in m2.base.received_log.log[self.Shard_ID]:
+                                return False, "expected sent messages to be received by the TTL"
 
         return True, "Valid block"
 

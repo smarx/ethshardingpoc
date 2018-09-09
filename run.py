@@ -42,8 +42,8 @@ vm_state["env"] = genesis_state["env"]
 vm_state["pre"] = genesis_state["pre"]
 
 transactions = [
-    format_transaction(tx, signed),
-    {
+      format_transaction(tx, signed),
+      {
         "gas": "0x5208",
         "gasPrice": "0x2",
         "hash": "0x0557bacce3375c98d806609b8d5043072f0b6a8bae45ae5a67a00d3a1a18d673",
@@ -58,7 +58,15 @@ transactions = [
 ]
 
 
+def convert_state_to_pre(state):
+    ''' The vladvm output isn't quite how we want it '''
+    pre = {}
+    for key, value in state["state"]["accounts"].items():
+        # print(value)
+        pre[key] = value
+    return pre
 
+# NOTES: from convo with steve
 # The “vm state” is really the “pre” part of what we send to vladvm. 
 # The “env” stuff is constant
 # the “transactions” list is a list of transactions that come from the 
@@ -66,20 +74,35 @@ transactions = [
 #   `MessagePayload`s. (This is done via `web3.eth.account.signTransaction(…)`.)
 # function apply(vm_state, [tx], mapping(S => received)) -> (vm_state, mapping(S => received) ) 
 def apply_to_state(pre_state=vm_state, tx=[]): #, receivedMap):
-    # open a process
+    # create inputst vlad_vm by combining the pre_state, env, and transactions 
+    transition_inputs = {}
+    transition_inputs["pre"] = vm_state["pre"]
+    transition_inputs["env"] = vm_state["env"]
+    transition_inputs["transactions"] = tx
+ 
+    # open vladvm
     vladvm = subprocess.Popen([vladvm_path, 'apply', '/dev/stdin'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
     # pipe state into that process 
     out = vladvm.communicate(json.dumps(vm_state).encode())[0].decode('utf-8')
-    
     result = json.loads(out)
+    new_state = convert_state_to_pre(result)
     
-    for receipt in result['receipts']:
-        if receipt['logs'] is not None:
-            for log in receipt['logs']:
-                log['topics'] = [binascii.unhexlify(t[2:]) for t in log['topics']]
-                log['data'] = binascii.unhexlify(log['data'][2:])
-            print(contract.events.SentMessage().processReceipt(receipt))
-    # return new_state;
+    print(result)
+    # look through logs for outgoing messages
+    # sent_log = SentLog()
+    # for receipt in result['receipts']:
+    #     if receipt['logs'] is not None:
+    #         for log in receipt['logs']:
+    #             log['topics'] = [binascii.unhexlify(t[2:]) for t in log['topics']]
+    #             log['data'] = binascii.unhexlify(log['data'][2:])
+    #         print(contract.events.SentMessage().processReceipt(receipt))
+    
 
-apply_to_state(vm_state, transactions, 
+    return new_state
+
+
+new_state = apply_to_state(vm_state, transactions)
+print(json.dumps(new_state))
+
+

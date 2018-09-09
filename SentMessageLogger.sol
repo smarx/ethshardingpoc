@@ -6,7 +6,7 @@ contract SentMessageLogger {
     uint indexed shard_ID,
     uint sendGas,
     address sendFromAddress,
-    address sendToAddress,
+    address indexed sendToAddress,
     uint value,
     bytes data,
     uint indexed base,

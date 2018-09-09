@@ -8,6 +8,7 @@ import random as rand
 # Experiment parameters
 NUM_PROPOSALS = 10
 NUM_RECEIPTS_PER_PROPOSAL = 3
+MEMPOOL_DRAIN_RATE = 1
 
 # Setup
 GENESIS_BLOCKS = {}
@@ -18,8 +19,12 @@ validators = {}
 for name in VALIDATOR_NAMES:
     validators[name] = Validator(name, GENESIS_BLOCKS)
 
-# maybe we will draw this from a mempool soon!
-data = []
+mempools = {}
+for ID in SHARD_IDS:
+    mempools[ID] = []
+
+    #fill me up!
+
 
 viewables = {}
 for v in VALIDATOR_NAMES:
@@ -29,6 +34,14 @@ for i in range(NUM_PROPOSALS):
     # make a new message from a random validator on a random shard
     next_proposer = rand.choice(VALIDATOR_NAMES)
     rand_ID = rand.choice(SHARD_IDS)
+
+    data = []
+    for j in range(MEMPOOL_DRAIN_RATE):
+        if len(mempools[rand_ID]) > 0:
+            payload = mempools[rand_ID][j]
+            data.append(payload)
+            mempools[rand_ID].remove(payload)
+
     new_message = validators[next_proposer].make_new_consensus_message(rand_ID, data)
     for v in VALIDATOR_NAMES:
         if v == next_proposer:

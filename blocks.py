@@ -6,7 +6,7 @@ SHARD_IDS = [0, 1, 2]
 # [DONE] Maurelian: please give message data format (for txs)
 class MessagePayload:
     ''' has properties necessary to create tx on the new shard '''
-    def init(self, fromAddress, toAddress, value, data):
+    def __init__(self, fromAddress, toAddress, value, data):
         self.fromAddress = fromAddress
         self.toAddress = toAddress
         self.value = value
@@ -17,14 +17,14 @@ class MessagePayload:
         # self.gasLimit = gasLimit
 
 class Message:
-    def init(self, data, base, TTL, message_payload ):
+    def __init__(self, data, base, TTL, message_payload ):
         self.data = data
         self.base = base
         self.TTL = TTL
         self.message_payload = message_payload 
 
 class SentLog:
-    def init(self):
+    def __init__(self):
         self.log = dict.fromkeys(SHARD_IDS)
         for ID in SHARD_IDS:
             self.log[ID] = []
@@ -39,7 +39,7 @@ class SentLog:
 
 
 class ReceivedLog:
-    def init(self):
+    def __init__(self):
         self.sources = { ID: None for ID in SHARD_IDS }
         self.log = { ID: [] for ID in SHARD_IDS }
 
@@ -57,7 +57,7 @@ class ReceivedLog:
 # Maurelian: please replace VM_state = None as default for genesis blocks to some initial VM state (balances)
     #  hmmmm... is that necessary?
 class Block:
-    def init(self, ID, prevblock=None, data=None, sent_log=None, received_log=None, vm_state=genesis_state):
+    def __init__(self, ID, prevblock=None, data=None, sent_log=None, received_log=None, vm_state=genesis_state):
         if sent_log is None:
             sent_log = SentLog()
         if received_log is None:

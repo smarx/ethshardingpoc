@@ -1,4 +1,5 @@
 import binascii
+from collections import defaultdict
 import json
 import os
 import subprocess
@@ -9,7 +10,7 @@ from genesis_state import genesis_state
 
 
 
-abi = json.loads('[{"constant":false,"inputs":[{"name":"_shard_ID","type":"uint256"},{"name":"_sendGas","type":"uint256"},{"name":"_sendToAddress","type":"address"},{"name":"_data","type":"bytes"}],"name":"send","outputs":[],"payable":true,"stateMutability":"payable","type":"function"},{"anonymous":false,"inputs":[{"indexed":true,"name":"shard_ID","type":"uint256"},{"indexed":false,"name":"sendGas","type":"uint256"},{"indexed":false,"name":"sendFromAddress","type":"address"},{"indexed":false,"name":"sendToAddress","type":"address"},{"indexed":false,"name":"value","type":"uint256"},{"indexed":false,"name":"data","type":"bytes"},{"indexed":true,"name":"base","type":"uint256"},{"indexed":false,"name":"TTL","type":"uint256"}],"name":"SentMessage","type":"event"}]')
+abi = json.loads('[{"constant":false,"inputs":[{"name":"_shard_ID","type":"uint256"},{"name":"_sendGas","type":"uint256"},{"name":"_sendToAddress","type":"address"},{"name":"_data","type":"bytes"}],"name":"send","outputs":[],"payable":true,"stateMutability":"payable","type":"function"},{"anonymous":false,"inputs":[{"indexed":true,"name":"shard_ID","type":"uint256"},{"indexed":false,"name":"sendGas","type":"uint256"},{"indexed":false,"name":"sendFromAddress","type":"address"},{"indexed":true,"name":"sendToAddress","type":"address"},{"indexed":false,"name":"value","type":"uint256"},{"indexed":false,"name":"data","type":"bytes"},{"indexed":true,"name":"base","type":"uint256"},{"indexed":false,"name":"TTL","type":"uint256"}],"name":"SentMessage","type":"event"}]')
 
 web3 = Web3()
 
@@ -67,53 +68,51 @@ def convert_state_to_pre(state):
     return pre
 
 # NOTES: from convo with steve
-# The “vm state” is really the “pre” part of what we send to vladvm. 
+# The “vm state” is really the “pre” part of what we send to vladvm.
 # The “env” stuff is constant
-# the “transactions” list is a list of transactions that come from the 
-#   mempool (originally a file full of test data?) and ones that are constructed from 
+# the “transactions” list is a list of transactions that come from the
+#   mempool (originally a file full of test data?) and ones that are constructed from
 #   `MessagePayload`s. (This is done via `web3.eth.account.signTransaction(…)`.)
-# function apply(vm_state, [tx], mapping(S => received)) -> (vm_state, mapping(S => received) ) 
-def apply_to_state(pre_state=vm_state, tx=[]): #, receivedMap):
-    # create inputst vlad_vm by combining the pre_state, env, and transactions 
+# function apply(vm_state, [tx], mapping(S => received)) -> (vm_state, mapping(S => received) )
+def apply_to_state(pre_state=vm_state, tx=None): #, receivedMap):
+    if tx is None:
+        tx = []
+
+    # create inputst vlad_vm by combining the pre_state, env, and transactions
     transition_inputs = {}
     transition_inputs["pre"] = vm_state["pre"]
     transition_inputs["env"] = vm_state["env"]
     transition_inputs["transactions"] = tx
- 
+
     # open vladvm
     vladvm = subprocess.Popen([vladvm_path, 'apply', '/dev/stdin'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
-    # pipe state into that process 
+    # pipe state into that process
     out = vladvm.communicate(json.dumps(transition_inputs).encode())[0].decode('utf-8')
     result = json.loads(out)
     new_state = convert_state_to_pre(result)
-    
+
     # look through logs for outgoing messages
     sent_log = SentLog()
     for receipt in result['receipts']:
         if receipt['logs'] is not None:
             for log in receipt['logs']:
-                topics = [binascii.unhexlify(t[2:]) for t in log['topics']]
-                data = binascii.unhexlify(log['data'][2:])
-                
-                shard_id = topics[1]
-                send_to_address = topics[2]
-                value = 100 # not sure how to extract from data
+                log['topics'] = [binascii.unhexlify(t[2:]) for t in log['topics']]
+                log['data'] = binascii.unhexlify(log['data'][2:])
 
-                payload = MessagePayload("0x0", send_to_address, 100, data)
-                # not really complete below here
-                message = Message( data, base, payload)
-                sent_log.add_sent_message(shard_id, message)
-                print(topics)
-
-            # print(contract.events.SentMessage().processReceipt(receipt))
-        #         # print(log) # ugly output, not sure how to make that into a message...
-
-        #         # sent_log.add_sent_message()
-    return new_state
+            for event in contract.events.SentMessage().processReceipt(receipt):
+                sent_log.add_sent_message(
+                    event.args.shard_ID,
+                    MessagePayload(
+                        event.args.sendFromAddress,
+                        event.args.sendToAddress,
+                        event.args.value,
+                        event.args.data,
+                    )
+                )
+    return new_state, sent_log
 
 
-new_state = apply_to_state(vm_state, transactions)
-# print(json.dumps(new_state))
-
-
+new_state, sent_log = apply_to_state(vm_state, transactions)
+print(json.dumps(new_state))
+print(sent_log.log)

@@ -8,21 +8,21 @@ from blocks import *
 from web3 import Web3
 from genesis_state import genesis_state
 
+web3 = Web3()
 
+private_key = '0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318'
+address = web3.eth.account.privateKeyToAccount(private_key).address
 
 abi = json.loads('[{"constant":false,"inputs":[{"name":"_shard_ID","type":"uint256"},{"name":"_sendGas","type":"uint256"},{"name":"_sendToAddress","type":"address"},{"name":"_data","type":"bytes"}],"name":"send","outputs":[],"payable":true,"stateMutability":"payable","type":"function"},{"anonymous":false,"inputs":[{"indexed":true,"name":"shard_ID","type":"uint256"},{"indexed":false,"name":"sendGas","type":"uint256"},{"indexed":false,"name":"sendFromAddress","type":"address"},{"indexed":true,"name":"sendToAddress","type":"address"},{"indexed":false,"name":"value","type":"uint256"},{"indexed":false,"name":"data","type":"bytes"},{"indexed":true,"name":"base","type":"uint256"},{"indexed":false,"name":"TTL","type":"uint256"}],"name":"SentMessage","type":"event"}]')
-
-web3 = Web3()
 
 vladvm_path = './vladvm-ubuntu'
 if(os.getenv("_system_type")):
     vladvm_path = './vladvm-macos'
 
 contract = web3.eth.contract(address='0x000000000000000000000000000000000000002A', abi=abi)
-tx = contract.functions.send(1, 300000, '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF', '0x1234').buildTransaction({ "gas": 3000000, "gasPrice": "0x2", "nonce": "0x0", "value": 5 })
+tx = contract.functions.send(1, 300000, '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF', '0x1234').buildTransaction({ "gas": 3000000, "gasPrice": "0x2", "nonce": hex(0), "value": 5 })
 
-signed = web3.eth.account.signTransaction(tx, '0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318')
-address = web3.eth.account.privateKeyToAccount('0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318').address
+signed = web3.eth.account.signTransaction(tx, private_key)
 
 def format_transaction(tx, signed):
     return {
@@ -43,8 +43,9 @@ vm_state["env"] = genesis_state["env"]
 vm_state["pre"] = genesis_state["pre"]
 
 transactions = [
-      format_transaction(tx, signed),
-      {
+    # Removed so as not to clobber the nonce
+    # format_transaction(tx, signed),
+    {
         "gas": "0x5208",
         "gasPrice": "0x2",
         "hash": "0x0557bacce3375c98d806609b8d5043072f0b6a8bae45ae5a67a00d3a1a18d673",
@@ -57,7 +58,6 @@ transactions = [
         "value": "0x1"
     }
 ]
-
 
 def convert_state_to_pre(state):
     ''' The vladvm output isn't quite how we want it '''
@@ -74,14 +74,26 @@ def convert_state_to_pre(state):
 #   mempool (originally a file full of test data?) and ones that are constructed from
 #   `MessagePayload`s. (This is done via `web3.eth.account.signTransaction(…)`.)
 # function apply(vm_state, [tx], mapping(S => received)) -> (vm_state, mapping(S => received) )
-def apply_to_state(pre_state=vm_state, tx=None): #, receivedMap):
-    if tx is None:
-        tx = []
+def apply_to_state(pre_state, tx, received_log):
+    nonce = int(pre_state["pre"][address]["nonce"], 0)
+    flattened_payloads = [message.message_payload for l in received_log.log.values() for message in l]
+    for payload in flattened_payloads:
+        transaction = {
+            "gas": 3000000,
+            "gasPrice": "0x2",
+            "nonce": hex(nonce),
+            "to": payload.toAddress,
+            "value": payload.value,
+            "data": payload.data,
+        }
+        nonce += 1
+        signed = web3.eth.account.signTransaction(transaction, private_key)
+        tx.append(format_transaction(transaction, signed))
 
     # create inputst vlad_vm by combining the pre_state, env, and transactions
     transition_inputs = {}
-    transition_inputs["pre"] = vm_state["pre"]
-    transition_inputs["env"] = vm_state["env"]
+    transition_inputs["pre"] = pre_state["pre"]
+    transition_inputs["env"] = pre_state["env"]
     transition_inputs["transactions"] = tx
 
     # open vladvm
@@ -112,7 +124,17 @@ def apply_to_state(pre_state=vm_state, tx=None): #, receivedMap):
                 )
     return new_state, sent_log
 
-
-new_state, sent_log = apply_to_state(vm_state, transactions)
+received_log = ReceivedLog()
+received_log.add_received_message(2, Message(
+    None, # base
+    5, # TTL
+    MessagePayload(
+        0, # from address
+        "0x1234567890123456789012345678901234567890", # to address
+        42, # value
+        "0x", # data
+    )
+))
+new_state, sent_log = apply_to_state(vm_state, transactions, received_log)
 print(json.dumps(new_state))
 print(sent_log.log)

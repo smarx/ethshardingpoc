@@ -6,14 +6,12 @@ import random as rand
 
 
 # Experiment parameters
-NUM_PROPOSALS = 10
-NUM_RECEIPTS_PER_PROPOSAL = 3
+NUM_PROPOSALS = 100
+NUM_RECEIPTS_PER_PROPOSAL = 1
 MEMPOOL_DRAIN_RATE = 1
 
 # Setup
-GENESIS_BLOCKS = {}
-for i in SHARD_IDS:
-    GENESIS_BLOCKS[i] = Block(i)
+GENESIS_BLOCKS = {0: Block(0), 1: Block(1), 2: Block(2)}
 
 validators = {}
 for name in VALIDATOR_NAMES:
@@ -42,7 +40,12 @@ for i in range(NUM_PROPOSALS):
             data.append(payload)
             mempools[rand_ID].remove(payload)
 
+    print "rand_ID", rand_ID
+    print "data", data
     new_message = validators[next_proposer].make_new_consensus_message(rand_ID, data)
+
+    print "proposal", i, "shard ID", rand_ID, "block", new_message.estimate, "height", new_message.estimate.height
+
     for v in VALIDATOR_NAMES:
         if v == next_proposer:
             continue

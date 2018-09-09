@@ -4,8 +4,9 @@ from config import SHARD_IDS
 def filtered_children(block, blocks, block_filter):
     children = []
     for b in blocks:
-        if b.prevblock == block and b not in block_filter:
-            children.append(b)
+        if b.prevblock is not None:
+            if b.prevblock == block and b not in block_filter:
+                children.append(b)
     return children
 
 def best_child(block, blocks, weighted_blocks, block_filter):
@@ -78,6 +79,18 @@ def sharded_fork_choice(starting_blocks, blocks, weighted_blocks):
                 if root_shard_fork_choice.height >= m.base.height + m.TTL:
                     block_filter.append(b)
                     continue
+        '''
+        # if they conflict with the most recent source of the root
+        if root_shard_fork_choice.received_log.sources[b.shard_ID] is not None:
+            if not b.is_in_chain(root_shard_fork_choice.received_log.sources[b.shard_ID]):
+                block_filter.append(b)
+                continue
+
+        # if they conflict with the most recent source of the root
+        if b.received_log.sources[root_shard_ID] is not None:
+            if not root_shard_fork_choice.is_in_chain(b.received_log.sources[root_shard_ID]):
+                block_filter.append(b)
+        '''
 
     left_child_ID = 1
     left_child_fork_choice = fork_choice(starting_blocks[left_child_ID], blocks, weighted_blocks, block_filter)
@@ -106,9 +119,9 @@ def test():
 
     result = sharded_fork_choice(starting_blocks, blocks, weighted_blocks)
 
-    print "0", result[0]
-    print "1", result[1]
-    print "2", result[2]
+    print "0", result[0].height
+    print "1", result[1].height
+    print "2", result[2].height
 
     print "height f", f.height
 

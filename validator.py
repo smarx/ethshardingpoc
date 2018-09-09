@@ -81,11 +81,7 @@ class Validator:
         for b in self.starting_blocks.values():
             blocks.append(b)
 
-        for b in blocks:
-            print "b", b
-
         return sharded_fork_choice(self.starting_blocks, blocks, self.get_weighted_blocks())
-
 
     def make_block(self, shard_ID, data, TTL=TTL_CONSTANT):
         # first we execute the fork choice rule
@@ -97,6 +93,7 @@ class Validator:
         for ID in SHARD_IDS:
             if ID == shard_ID:
                 continue
+
             # we're just going to receive every send that we see from the fork choice (which filtered blocks who don't recieve things before their TTLs)
             received_log.sources[ID] = fork_choice[ID]
             received_log.log[ID] = fork_choice[ID].sent_log.log[shard_ID]
@@ -146,7 +143,6 @@ class Validator:
                 shard_IDs.append(ID)
         
         sent_log = prevblock.sent_log.add_sent_messages(shard_IDs, new_sent_messages)
-
 
         return Block(shard_ID, prevblock, data, sent_log, received_log, new_vm_state)
 

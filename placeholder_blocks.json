@@ -310,7 +310,7 @@
       }
     ]
   },
-  {"id": 14, "shard": 0, "height":5, "prevBlock": 11,   "validator": 1,      
+  {"id": 14, "shard": 0, "height":5, "prevBlock": 11,  "validator": 1,      
     "SentMessages":[ 
       { "shard_ID": 1,
         "sendGas": 53444534,

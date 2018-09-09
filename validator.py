@@ -1,4 +1,4 @@
-from blocks import Block
+from blocks import Block, Message
 from blocks import ReceivedLog
 from config import SHARD_IDS
 from config import VALIDATOR_NAMES

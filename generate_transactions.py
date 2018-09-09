@@ -42,7 +42,7 @@ def gen_in_shard_tx(nonce):
       "nonce": "0x0", # we will need to overwrite this by getting the nonce from the state
       "to": "0x000000000000000000000000000000000000002F",
       "value": 20,
-      "data": "0x0",
+      "data": "0x",
     }
 
     in_shard_tx_signed =  web3.eth.account.signTransaction(in_shard_tx, private_key_bob)

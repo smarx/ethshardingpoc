@@ -11,7 +11,7 @@ from genesis_state import genesis_state
 web3 = Web3()
 
 private_key = '0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318'
-address = web3.eth.account.privateKeyToAccount(private_key).address
+address = web3.eth.account.privateKeyToAccount(private_key).address.lower()[2:]
 
 abi = json.loads('[{"constant":false,"inputs":[{"name":"_shard_ID","type":"uint256"},{"name":"_sendGas","type":"uint256"},{"name":"_sendToAddress","type":"address"},{"name":"_data","type":"bytes"}],"name":"send","outputs":[],"payable":true,"stateMutability":"payable","type":"function"},{"anonymous":false,"inputs":[{"indexed":true,"name":"shard_ID","type":"uint256"},{"indexed":false,"name":"sendGas","type":"uint256"},{"indexed":false,"name":"sendFromAddress","type":"address"},{"indexed":true,"name":"sendToAddress","type":"address"},{"indexed":false,"name":"value","type":"uint256"},{"indexed":false,"name":"data","type":"bytes"},{"indexed":true,"name":"base","type":"uint256"},{"indexed":false,"name":"TTL","type":"uint256"}],"name":"SentMessage","type":"event"}]')
 
@@ -75,14 +75,15 @@ def convert_state_to_pre(state):
 #   `MessagePayload`s. (This is done via `web3.eth.account.signTransaction(…)`.)
 # function apply(vm_state, [tx], mapping(S => received)) -> (vm_state, mapping(S => received) )
 def apply_to_state(pre_state, tx, received_log):
+    # print(pre_state["pre"][address]["nonce"])   
     nonce = int(pre_state["pre"][address]["nonce"], 0)
-    flattened_payloads = [message.message_payload for l in received_log.log.values() for message in l]
+    flattened_payloads = [message.message_payload for l in received_log.values() for message in l]
     for payload in flattened_payloads:
         transaction = {
             "gas": 3000000,
             "gasPrice": "0x2",
             "nonce": hex(nonce),
-            "to": payload.toAddress,
+            "to": payload.toAddress.lower()[2:],
             "value": payload.value,
             "data": payload.data,
         }
@@ -100,13 +101,23 @@ def apply_to_state(pre_state, tx, received_log):
     vladvm = subprocess.Popen([vladvm_path, 'apply', '/dev/stdin'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
     # pipe state into that process
+    print(transition_inputs)
     out = vladvm.communicate(json.dumps(transition_inputs).encode())[0].decode('utf-8')
+    print("out", out)  
     result = json.loads(out)
-    new_state = convert_state_to_pre(result)
-
+    new_state = {
+        "env": pre_state["env"], 
+        "pre": result["state"]["accounts"].copy(),
+    }
+    for addr, account in new_state["pre"].items():
+        for key in ("nonce", "balance"):
+            account[key] = hex(int(account[key]))
+        for key in ("code", "codeHash"):
+            account[key] = "0x" + account[key]
+    
     # look through logs for outgoing messages
     sent_log = SentLog()
-    for receipt in result['receipts']:
+    for receipt in result.get('receipts', []):
         if receipt['logs'] is not None:
             for log in receipt['logs']:
                 log['topics'] = [binascii.unhexlify(t[2:]) for t in log['topics']]
@@ -116,25 +127,25 @@ def apply_to_state(pre_state, tx, received_log):
                 sent_log.add_sent_message(
                     event.args.shard_ID,
                     MessagePayload(
-                        event.args.sendFromAddress,
-                        event.args.sendToAddress,
+                        event.args.sendFromAddress.lower()[2:],
+                        event.args.sendToAddress.lower()[2:],
                         event.args.value,
                         event.args.data,
                     )
                 )
-    return new_state, sent_log
+    return new_state, sent_log.log
 
-received_log = ReceivedLog()
-received_log.add_received_message(2, Message(
-    None, # base
-    5, # TTL
-    MessagePayload(
-        0, # from address
-        "0x1234567890123456789012345678901234567890", # to address
-        42, # value
-        "0x", # data
-    )
-))
-new_state, sent_log = apply_to_state(vm_state, transactions, received_log)
-print(json.dumps(new_state))
-print(sent_log.log)
+# received_log = ReceivedLog()
+# received_log.add_received_message(2, Message(
+#     None, # base
+#     5, # TTL
+#     MessagePayload(
+#         0, # from address
+#         "0x1234567890123456789012345678901234567890", # to address
+#         42, # value
+#         "0x", # data
+#     )
+# ))
+# new_state, sent_log = apply_to_state(vm_state, transactions, received_log)
+# print(json.dumps(new_state))
+# print(sent_log.log)

@@ -2,8 +2,8 @@ from web3 import Web3
 
 web3 = Web3()
 
-# same "pusher" addres on each shard
-address = web3.eth.account.privateKeyToAccount('0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318').address
+# same "pusher" address on each shard
+address = web3.eth.account.privateKeyToAccount('0x6c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318').address.lower()[2:]
 
 # just gonna reuse this initial state on each shard.
 genesis_state = {
@@ -22,17 +22,29 @@ genesis_state = {
         "nonce": "0x0",
         "storage": {}
       },
-      "a94f5374fce5edbc8e2a8697c15331677e6ebf0b": {
+      "a94f5374fce5edbc8e2a8697c15331677e6ebf0b".lower(): {
         "balance": "0x5ffd4878be161d74",
         "code": "0x",
-        "nonce": "0xac",
+        "nonce": "0x0",
         "storage": {}
       },
-      "0x8a8eafb1cf62bfbeb1741769dae1a9dd47996192":{
+      "2c7536E3605D9C16a7a3D7b1898e529396a65c23".lower(): {
+        "balance": "0x5ffd4878be161d74",
+        "code": "0x",
+        "nonce": "0x0",
+        "storage": {}
+      },
+      "c227e8f6eE49f35ddf4dd73F105cF743914B11Af".lower(): {
+        "balance": "0x5ffd4878be161d74",
+        "code": "0x",
+        "nonce": "0x0",
+        "storage": {}
+      },
+      "8a8eafb1cf62bfbeb1741769dae1a9dd47996192".lower():{
         "balance": "0xfeedbead",
         "nonce" : "0x00"
       },
-      "0x000000000000000000000000000000000000002a": {
+      "000000000000000000000000000000000000002a": {
         "balance": "0x00",
         "nonce": "0x00",
         "storage": {},
@@ -40,3 +52,4 @@ genesis_state = {
       }
     }
 }
+

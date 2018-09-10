@@ -29,8 +29,8 @@ watcher = Validator(0, GENESIS_BLOCKS)
 mempools = {}
 for ID in SHARD_IDS:
     mempools[ID] = []
-
     # Fill me up!
+
 
 viewables = {}
 for v in VALIDATOR_NAMES:
@@ -45,7 +45,7 @@ for i in range(NUM_PROPOSALS):
     for j in range(MEMPOOL_DRAIN_RATE):
         if len(mempools[rand_ID]) > 0:
             payload = mempools[rand_ID][j]
-            data.append(payload)
+            data.append(payload) # expects a payload formatted message, but we're giving it a full tx.
             mempools[rand_ID].remove(payload)
     new_message = validators[next_proposer].make_new_consensus_message(rand_ID, data)
 

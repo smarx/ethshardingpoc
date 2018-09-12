@@ -49,9 +49,9 @@ for i in range(NUM_PROPOSALS):
             mempools[rand_ID].remove(payload)
     new_message = validators[next_proposer].make_new_consensus_message(rand_ID, data)
 
-    print "rand_ID", rand_ID
-    print "data", data
-    print "proposal", i, "shard ID", rand_ID, "block", new_message.estimate, "height", new_message.estimate.height
+    print("rand_ID", rand_ID)
+    print("data", data)
+    print("proposal", i, "shard ID", rand_ID, "block", new_message.estimate, "height", new_message.estimate.height)
 
     for v in VALIDATOR_NAMES:
         if v == next_proposer:

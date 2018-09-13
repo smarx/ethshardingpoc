@@ -98,7 +98,7 @@ def apply_to_state(pre_state, tx, received_log):
     transition_inputs["transactions"] = tx
 
     # open vladvm
-    vladvm = subprocess.Popen([vladvm_path, 'apply', '/dev/stdin'], stdin=subprocess.PIPE, stdout=subprocess.PIPE, shell=True)
+    vladvm = subprocess.Popen([vladvm_path, 'apply', '/dev/stdin'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
     # pipe state into that process
     print(transition_inputs)

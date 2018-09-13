@@ -59,7 +59,10 @@ RUN apt-get install -y pkg-config
 RUN pip3 install --upgrade matplotlib
 
 ```
-
+I build it with ```sudo docker build --tag py3web3mpl . ``` and then run with my local location of my ```ethshardingpoc``` repo as a mounted volume:
+```
+sudo docker run -it --net=host --env="DISPLAY" --volume="$HOME/.Xauthority:/root/.Xauthority:rw" --volume "$(pwd)"/Documents/programming/python/ethshardingpoc:/ethshardingpoc py3web3mpl
+```
 
 ## Known Issues
 - Need to make sure entire repository is Python >3.5 compatible.

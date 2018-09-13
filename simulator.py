@@ -16,6 +16,7 @@ NUM_PROPOSALS = 100
 NUM_RECEIPTS_PER_PROPOSAL = 20
 MEMPOOL_DRAIN_RATE = 1
 REPORT_INTERVAL = 10
+PAUSE_LENGTH = 0.01
 
 # Setup
 GENESIS_BLOCKS = {0: Block(0), 1: Block(1), 2: Block(2)}
@@ -70,6 +71,7 @@ for i in range(NUM_PROPOSALS):
     # Time to report 
     if (i + 1) % REPORT_INTERVAL == 0:
 
+        plt.clf()
         fork_choice = watcher.fork_choice()
         SHARD_SPACING_CONSTANT = 3
         BlocksGraph = nx.Graph();
@@ -113,11 +115,7 @@ for i in range(NUM_PROPOSALS):
 
         plt.axis('off')
         plt.draw()
-        plt.pause(0.001)
-
-        # Only close the plot as new blocks come in 
-        if i != (NUM_PROPOSALS-1): 
-            plt.close()
+        plt.pause(PAUSE_LENGTH)
 
 # Leave plot open after going over all proposals 
 plt.show(block=True)

@@ -4,7 +4,7 @@ from config import SHARD_IDS
 from config import VALIDATOR_NAMES
 from config import VALIDATOR_WEIGHTS
 from config import TTL_CONSTANT
-from run import apply_to_state
+from evm_transition import apply_to_state
 
 from fork_choice import sharded_fork_choice
 

@@ -9,6 +9,8 @@ import matplotlib.pyplot as plt
 from config import SHARD_IDS
 from blocks import Block
 from validator import Validator
+from validator import ConsensusMessage
+from validator import UnresolvedDeps
 from config import VALIDATOR_NAMES
 
 # Experiment parameters
@@ -19,54 +21,80 @@ REPORT_INTERVAL = 10
 PAUSE_LENGTH = 0.01
 
 # Setup
-GENESIS_BLOCKS = {0: Block(0), 1: Block(1), 2: Block(2)}
+GENESIS_BLOCKS = {}
+GENESIS_MESSAGES = []
+for ID in SHARD_IDS:
+    GENESIS_BLOCKS[ID] = Block(ID)
+    GENESIS_MESSAGES.append(ConsensusMessage(GENESIS_BLOCKS[ID], 0, []))  # The watcher is the sender of the genesis blocks
 
 validators = {}
 for name in VALIDATOR_NAMES:
-    validators[name] = Validator(name, GENESIS_BLOCKS)
+    validators[name] = Validator(name)
 
-watcher = Validator(0, GENESIS_BLOCKS)
+#  Watcher lives at validator name 0 and receives all the messages
+watcher = validators[0]
 
+for v in VALIDATOR_NAMES:
+    for genesis_message in GENESIS_MESSAGES:
+        validators[v].receive_consensus_message(genesis_message)
+
+# GLOBAL MEMPOOLS
 mempools = {}
 for ID in SHARD_IDS:
     mempools[ID] = []
     # Fill me up!
 
-
+# GLOBAL VIEWABLES
 viewables = {}
 for v in VALIDATOR_NAMES:
     viewables[v] = []
 
+# SIMULATION LOOP:
 for i in range(NUM_PROPOSALS):
     # Make a new message from a random validator on a random shard
     rand_ID = random.choice(SHARD_IDS)
-    next_proposer = 3*rand_ID + random.randint(1,3)
+    next_proposer = 3*rand_ID + random.randint(1, 3)
 
     data = []
     for j in range(MEMPOOL_DRAIN_RATE):
         if len(mempools[rand_ID]) > 0:
             payload = mempools[rand_ID][j]
-            data.append(payload) # expects a payload formatted message, but we're giving it a full tx.
+            data.append(payload)  # expects a payload formatted message, but we're giving it a full tx.
             mempools[rand_ID].remove(payload)
+
+    if next_proposer == 0:
+        assert False, "watcher should never propose"
+
+    # MAKE CONSENSUS MESSAGE
     new_message = validators[next_proposer].make_new_consensus_message(rand_ID, data)
 
-    print("rand_ID", rand_ID)
-    print("data", data)
-    print("proposal", i, "shard ID", rand_ID, "block", new_message.estimate, "height", new_message.estimate.height)
+    print("new_message.sender()", new_message.sender)
+    watcher.receive_consensus_message(new_message)  # here the watcher is, receiving all the messages
 
+    #print("rand_ID", rand_ID)
+    #print("data", data)
+    #print("proposal", i, "shard ID", rand_ID, "block", new_message.estimate, "height", new_message.estimate.height)
+
+    # MAKE NEW MESSAGE VIEWABLE
     for v in VALIDATOR_NAMES:
-        if v == next_proposer:
+        if v == next_proposer or v == 0:
             continue
-        viewables[v].append(new_message)
-        watcher.receive_consensus_messages([new_message])
+        viewables[v].append(new_message)  # validators have the possibility of later viewing this message
 
+    # RECEIVE CONSENSUS MESSAGE
     for j in range(NUM_RECEIPTS_PER_PROPOSAL):
         # recieve a new message for a random validator
         next_receiver = random.choice(VALIDATOR_NAMES)
+        if next_receiver == 0:
+            continue
         if len(viewables[next_receiver]) > 0:  # if they have any viewables at all
             received_message = random.choice(viewables[next_receiver])
             viewables[next_receiver].remove(received_message)
-            validators[next_receiver].receive_consensus_messages([received_message])
+
+            try:
+                validators[next_receiver].receive_consensus_message(received_message)
+            except UnresolvedDeps:
+                continue
 
     # Time to report 
     if (i + 1) % REPORT_INTERVAL == 0:
@@ -92,7 +120,7 @@ for i in range(NUM_PROPOSALS):
             for ID2 in SHARD_IDS:
                 if fork_choice[ID].received_log.sources[ID2] is not None:
                     MessagesGraph.add_edge(fork_choice[ID], fork_choice[ID].received_log.sources[ID2])
-        
+
         for message in watcher.consensus_messages:
             block = message.estimate
             senders[block] = message.sender

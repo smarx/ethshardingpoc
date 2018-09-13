@@ -8,8 +8,14 @@ from evm_transition import apply_to_state
 
 from fork_choice import sharded_fork_choice
 
+import copy
+
+class UnresolvedDeps(Exception):
+    pass
+
+
 class ConsensusMessage:
-    def __init__(self, block, name, justification):
+    def __init__(self, block, name, justification=[]):
         self.estimate = block
         self.sender = name
         self.justification = justification
@@ -27,22 +33,18 @@ class ConsensusMessage:
                 self.height += 1
 
 class Validator:
-    def __init__(self, name, starting_blocks):
+    def __init__(self, name):
         assert name in VALIDATOR_NAMES, "expected a validator name"
         self.name = name
         self.consensus_messages = []
-        assert isinstance(starting_blocks, dict), "expected dict"
-        for ID in SHARD_IDS:
-            assert ID in starting_blocks.keys(), "expected to have starting blocks for all shard IDs"
-        for b in starting_blocks.values():
-            assert isinstance(b, Block), "expected starting blocks to be blocks"
 
-        self.starting_blocks = starting_blocks
+    def receive_consensus_message(self, message):
+        for m in message.justification:
+            assert isinstance(m, ConsensusMessage), "expected consensus message"
+            if m not in self.consensus_messages:
+                raise UnresolvedDeps
 
-
-    def receive_consensus_messages(self, messages):
-        for m in messages:
-            self.consensus_messages.append(m)
+        self.consensus_messages.append(message)
 
     # assumes no equivocations exist
     def latest_messages(self):
@@ -79,10 +81,14 @@ class Validator:
     def fork_choice(self):
         # the blocks in the view are the genesis blocks and blocks from consensus messages
         blocks = self.get_blocks_from_consensus_messages()
-        for b in self.starting_blocks.values():
-            blocks.append(b)
 
-        return sharded_fork_choice(self.starting_blocks, blocks, self.get_weighted_blocks())
+        #  maybe this should be a parameter, but it's not so bad
+        genesis_blocks = {}
+        for m in self.consensus_messages:
+            if m.sender == 0:
+                genesis_blocks[m.estimate.shard_ID] = m.estimate
+
+        return sharded_fork_choice(genesis_blocks, blocks, self.get_weighted_blocks())
 
     def make_block(self, shard_ID, data, TTL=TTL_CONSTANT):
         # first we execute the fork choice rule
@@ -147,6 +153,6 @@ class Validator:
 
     def make_new_consensus_message(self, shard_ID, data, TTL=TTL_CONSTANT):
         new_block = self.make_block(shard_ID, data, TTL)
-        new_message = ConsensusMessage(new_block, self.name, self.consensus_messages)
-        self.consensus_messages.append(new_message)
+        new_message = ConsensusMessage(new_block, self.name, copy.copy(self.consensus_messages))
+        self.receive_consensus_message(new_message)
         return new_message

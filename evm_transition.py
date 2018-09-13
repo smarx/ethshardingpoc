@@ -3,6 +3,7 @@ from collections import defaultdict
 import json
 import os
 import subprocess
+import sys 
 
 from blocks import *
 from web3 import Web3
@@ -16,7 +17,7 @@ address = web3.eth.account.privateKeyToAccount(private_key).address.lower()[2:]
 abi = json.loads('[{"constant":false,"inputs":[{"name":"_shard_ID","type":"uint256"},{"name":"_sendGas","type":"uint256"},{"name":"_sendToAddress","type":"address"},{"name":"_data","type":"bytes"}],"name":"send","outputs":[],"payable":true,"stateMutability":"payable","type":"function"},{"anonymous":false,"inputs":[{"indexed":true,"name":"shard_ID","type":"uint256"},{"indexed":false,"name":"sendGas","type":"uint256"},{"indexed":false,"name":"sendFromAddress","type":"address"},{"indexed":true,"name":"sendToAddress","type":"address"},{"indexed":false,"name":"value","type":"uint256"},{"indexed":false,"name":"data","type":"bytes"},{"indexed":true,"name":"base","type":"uint256"},{"indexed":false,"name":"TTL","type":"uint256"}],"name":"SentMessage","type":"event"}]')
 
 evm_path = './evm-ubuntu'
-if(os.getenv("_system_type")):
+if (sys.platform == 'darwin'):
     evm_path = './evm-macos'
 
 contract = web3.eth.contract(address='0x000000000000000000000000000000000000002A', abi=abi)
@@ -102,10 +103,6 @@ def apply_to_state(pre_state, tx, received_log):
 
     # pipe state into that process
     print(transition_inputs)
-    print("hello")
-    #print(type(evm.communicate(json.dumps(transition_inputs).encode())[0]))
-    #print((evm.communicate(json.dumps(transition_inputs).encode())[0]))
-    print("in1")
 
     out = evm.communicate(json.dumps(transition_inputs).encode())[0].decode('utf-8')
     print("out2", out)

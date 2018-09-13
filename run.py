@@ -15,9 +15,9 @@ address = web3.eth.account.privateKeyToAccount(private_key).address.lower()[2:]
 
 abi = json.loads('[{"constant":false,"inputs":[{"name":"_shard_ID","type":"uint256"},{"name":"_sendGas","type":"uint256"},{"name":"_sendToAddress","type":"address"},{"name":"_data","type":"bytes"}],"name":"send","outputs":[],"payable":true,"stateMutability":"payable","type":"function"},{"anonymous":false,"inputs":[{"indexed":true,"name":"shard_ID","type":"uint256"},{"indexed":false,"name":"sendGas","type":"uint256"},{"indexed":false,"name":"sendFromAddress","type":"address"},{"indexed":true,"name":"sendToAddress","type":"address"},{"indexed":false,"name":"value","type":"uint256"},{"indexed":false,"name":"data","type":"bytes"},{"indexed":true,"name":"base","type":"uint256"},{"indexed":false,"name":"TTL","type":"uint256"}],"name":"SentMessage","type":"event"}]')
 
-vladvm_path = './vladvm-ubuntu'
+evm_path = './evm-ubuntu'
 if(os.getenv("_system_type")):
-    vladvm_path = './vladvm-macos'
+    evm_path = './evm-macos'
 
 contract = web3.eth.contract(address='0x000000000000000000000000000000000000002A', abi=abi)
 tx = contract.functions.send(1, 300000, '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF', '0x1234').buildTransaction({ "gas": 3000000, "gasPrice": "0x2", "nonce": hex(0), "value": 5 })
@@ -60,7 +60,7 @@ transactions = [
 ]
 
 def convert_state_to_pre(state):
-    ''' The vladvm output isn't quite how we want it '''
+    ''' The evm output isn't quite how we want it '''
     pre = {}
     for key, value in state["state"]["accounts"].items():
         # print(value)
@@ -68,7 +68,7 @@ def convert_state_to_pre(state):
     return pre
 
 # NOTES: from convo with steve
-# The “vm state” is really the “pre” part of what we send to vladvm.
+# The “vm state” is really the “pre” part of what we send to evm.
 # The “env” stuff is constant
 # the “transactions” list is a list of transactions that come from the
 #   mempool (originally a file full of test data?) and ones that are constructed from
@@ -91,22 +91,27 @@ def apply_to_state(pre_state, tx, received_log):
         signed = web3.eth.account.signTransaction(transaction, private_key)
         tx.append(format_transaction(transaction, signed))
 
-    # create inputst vlad_vm by combining the pre_state, env, and transactions
+    # create inputst evm by combining the pre_state, env, and transactions
     transition_inputs = {}
     transition_inputs["pre"] = pre_state["pre"]
     transition_inputs["env"] = pre_state["env"]
     transition_inputs["transactions"] = tx
 
-    # open vladvm
-    vladvm = subprocess.Popen([vladvm_path, 'apply', '/dev/stdin'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+    # open evm
+    evm = subprocess.Popen([evm_path, 'apply', '/dev/stdin'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
     # pipe state into that process
     print(transition_inputs)
-    out = vladvm.communicate(json.dumps(transition_inputs).encode())[0].decode('utf-8')
-    print("out", out)  
+    print("hello")
+    #print(type(evm.communicate(json.dumps(transition_inputs).encode())[0]))
+    #print((evm.communicate(json.dumps(transition_inputs).encode())[0]))
+    print("in1")
+
+    out = evm.communicate(json.dumps(transition_inputs).encode())[0].decode('utf-8')
+    print("out2", out)
     result = json.loads(out)
     new_state = {
-        "env": pre_state["env"], 
+        "env": pre_state["env"],
         "pre": result["state"]["accounts"].copy(),
     }
     for addr, account in new_state["pre"].items():
@@ -114,7 +119,7 @@ def apply_to_state(pre_state, tx, received_log):
             account[key] = hex(int(account[key]))
         for key in ("code", "codeHash"):
             account[key] = "0x" + account[key]
-    
+
     # look through logs for outgoing messages
     sent_log = SentLog()
     for receipt in result.get('receipts', []):

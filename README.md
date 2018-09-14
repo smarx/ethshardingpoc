@@ -67,8 +67,3 @@ Note that it uses X11 to display matplotlib, so please use it at your own risk, 
 ```
 cd ethshardingpoc && python simulator.py 
 ```
-
-
-## Known Issues
-- Need to make sure entire repository is Python >3.5 compatible.
-- `simulator.py` crashing. See [Issue #3](https://github.com/smarx/ethshardingpoc/issues/3)

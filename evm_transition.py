@@ -83,7 +83,7 @@ def apply_to_state(pre_state, tx, received_log):
             "gas": 3000000,
             "gasPrice": "0x2",
             "nonce": hex(nonce),
-            "to": payload.toAddress.lower()[2:],
+            "to": payload.toAddress.lower()[2:],  # long term should verify checksum before lowering the address
             "value": payload.value,
             "data": payload.data,
         }
@@ -101,14 +101,14 @@ def apply_to_state(pre_state, tx, received_log):
     evm = subprocess.Popen([evm_path, 'apply', '/dev/stdin'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
     # pipe state into that process
-    print(transition_inputs)
-    print("hello")
-    #print(type(evm.communicate(json.dumps(transition_inputs).encode())[0]))
-    #print((evm.communicate(json.dumps(transition_inputs).encode())[0]))
-    print("in1")
+    # print(transition_inputs)
+    # print("hello")
+    # print(type(evm.communicate(json.dumps(transition_inputs).encode())[0]))
+    # print((evm.communicate(json.dumps(transition_inputs).encode())[0]))
+    # print("in1")
 
     out = evm.communicate(json.dumps(transition_inputs).encode())[0].decode('utf-8')
-    print("out2", out)
+    # print("out2", out)
     result = json.loads(out)
     new_state = {
         "env": pre_state["env"],

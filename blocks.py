@@ -57,7 +57,7 @@ class ReceivedLog:
 # Maurelian: please replace VM_state = None as default for genesis blocks to some initial VM state (balances)
     #  hmmmm... is that necessary?  I can't compile bc I don't have web3, so not for now!
 class Block:
-    def __init__(self, ID, prevblock=None, data=None, sent_log=None, received_log=None, vm_state=genesis_state):
+    def __init__(self, ID, prevblock=None, txn_log=[], sent_log=None, received_log=None, vm_state=genesis_state):
         if sent_log is None:
             sent_log = SentLog()
         if received_log is None:
@@ -65,7 +65,7 @@ class Block:
 
         self.shard_ID = ID
         self.prevblock = prevblock
-        self.data = data
+        self.txn_log = txn_log
         self.sent_log = sent_log
         self.received_log = received_log
         self.vm_state = vm_state
@@ -199,14 +199,31 @@ class Block:
             Monotonicity conditions
             '''
 
+            # previous tx list is a prefix of this txn list
+            prev_num_txs = len(self.prevblock.txn_log)
+            new_num_txs = len(self.txn_log)
+            if new_num_txs < prev_num_txs:
+                return False, "expected current txn log to be an extension of the previous"
+            for i in range(prev_num_txs):
+                if self.txn_log == []:
+                    return False, "expected current txn log to be an extension of the previous"
+                if self.prevblock.txn_log[i] != self.txn_log[i]:
+                    return False, "expected current txn log to be an extension of the previous"
+
             # previous sent log is a prefix of current sent log
             prev_num_sent = len(self.prevblock.sent_log.log[ID])
+            new_num_sent = len(self.sent_log.log[ID])
+            if new_num_sent < prev_num_sent:
+                return False, "expected current sent log to be an extension of the previous"
             for i in range(prev_num_sent):
                 if self.prevblock.sent_log.log[ID][i] != self.sent_log.log[ID][i]:
                     return False, "expected current sent log to be an extension of the previous"
 
             # previous received log is a prefix of current received log
             prev_num_received = len(self.prevblock.received_log.log[ID])
+            new_num_received = len(self.received_log.log[ID])
+            if new_num_received < prev_num_received:
+                return False,  "expected current received log to be an extension of the previous"
             for i in range(prev_num_received):
                 if self.prevblock.received_log.log[ID][i] != self.received_log.log[ID][i]:
                     return False, "expected current received log to be an extension of the previous"

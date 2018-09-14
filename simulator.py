@@ -6,22 +6,20 @@ import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 
-from config import SHARD_IDS
 from blocks import Block
 from validator import Validator
 from validator import ConsensusMessage
 from validator import UnresolvedDeps
+from generate_transactions import gen_alice_and_bob_tx
+
+from config import SHARD_IDS
 from config import VALIDATOR_NAMES
-
-import generate_transactions
-
-
-# Experiment parameters
-NUM_PROPOSALS = 100
-NUM_RECEIPTS_PER_PROPOSAL = 30
-MEMPOOL_DRAIN_RATE = 1
-REPORT_INTERVAL = 10
-PAUSE_LENGTH = 0.01
+from config import NUM_PROPOSALS
+from config import NUM_WITHIN_SHARD_RECEIPTS_PER_PROPOSAL
+from config import NUM_BETWEEN_SHARD_RECEIPTS_PER_PROPOSAL
+from config import MEMPOOL_DRAIN_RATE
+from config import REPORT_INTERVAL
+from config import PAUSE_LENGTH
 
 # Setup
 GENESIS_BLOCKS = {}
@@ -41,16 +39,24 @@ for v in VALIDATOR_NAMES:
     for genesis_message in GENESIS_MESSAGES:
         validators[v].receive_consensus_message(genesis_message)
 
+shard_assignment = {}
+for ID in SHARD_IDS:
+    shard_assignment[ID] = []  # Keeps track of to which shards the validators are assigned
+    for i in range(3):
+        shard_assignment[ID].append(3*ID + i + 1)
 
 # GLOBAL MEMPOOLS
 mempools = {}
+txs = gen_alice_and_bob_tx()
 for ID in SHARD_IDS:
-    mempools[ID] = generate_transactions.gen_alice_and_bob_tx()
+    mempools[ID] = txs
 
 # GLOBAL VIEWABLES
 viewables = {}
 for v in VALIDATOR_NAMES:
-    viewables[v] = []
+    viewables[v] = {}
+    for w in VALIDATOR_NAMES:
+        viewables[v][w] = []
 
 # SIMULATION LOOP:
 for i in range(NUM_PROPOSALS):
@@ -75,22 +81,37 @@ for i in range(NUM_PROPOSALS):
     for v in VALIDATOR_NAMES:
         if v == next_proposer or v == 0:
             continue
-        viewables[v].append(new_message)  # validators have the possibility of later viewing this message
+        viewables[v][next_proposer].append(new_message)  # validators have the possibility of later viewing this message
 
-    # RECEIVE CONSENSUS MESSAGE
-    for j in range(NUM_RECEIPTS_PER_PROPOSAL):
+    # RECEIVE CONSENSUS MESSAGES WITHIN SHARD
+    for j in range(NUM_WITHIN_SHARD_RECEIPTS_PER_PROPOSAL):
         # recieve a new message for a random validator
-        next_receiver = random.choice(VALIDATOR_NAMES)
-        if next_receiver == 0:
-            continue
-        if len(viewables[next_receiver]) > 0:  # if they have any viewables at all
-            received_message = random.choice(viewables[next_receiver])
-            viewables[next_receiver].remove(received_message)
-
+        next_receiver = random.choice(shard_assignment[rand_ID])
+        receiving_from = random.choice(shard_assignment[rand_ID])
+        assert next_receiver != watcher.name, "didn't except the watcher"
+        if len(viewables[next_receiver][receiving_from]) > 0:  # if they have any viewables at all
+            received_message = viewables[next_receiver][receiving_from][0]
             try:
                 validators[next_receiver].receive_consensus_message(received_message)
+                viewables[next_receiver][receiving_from].remove(received_message)
             except UnresolvedDeps:
                 continue
+
+    # RECEIVE CONSENSUS MESSAGES BETWEEN SHARDS
+    for j in range(NUM_BETWEEN_SHARD_RECEIPTS_PER_PROPOSAL):
+        # recieve a new message for a random validator
+        next_receiver = random.choice(VALIDATOR_NAMES)
+        receiving_from = random.choice(VALIDATOR_NAMES)
+        if next_receiver == 0 or receiving_from == 0:
+            continue
+        if len(viewables[next_receiver][receiving_from]) > 0:  # if they have any viewables at all
+            received_message = viewables[next_receiver][receiving_from][0]
+            try:
+                validators[next_receiver].receive_consensus_message(received_message)
+                viewables[next_receiver][receiving_from].remove(received_message)
+            except UnresolvedDeps:
+                continue
+
 
     # DRAW VISUALIZATION:
     if (i + 1) % REPORT_INTERVAL == 0:

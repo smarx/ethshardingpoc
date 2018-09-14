@@ -23,21 +23,20 @@ class ConsensusMessage:
         assert isinstance(self.estimate, Block), "expected block"
         assert self.sender in VALIDATOR_NAMES
 
-        if len(self.justification) == 0:
-            self.height = 0
-
+        self.height = 0
+        max_height = 0
         for m in self.justification:
             assert isinstance(m, ConsensusMessage), "expected justification to contain consensus messages"
-            self.height = 0
-            if m.sender == self.sender:
-                self.height += 1
+            if m.height > max_height:
+                max_height = m.height
+
+        self.height = max_height + 1
 
 class Validator:
     def __init__(self, name):
         assert name in VALIDATOR_NAMES, "expected a validator name"
         self.name = name
         self.consensus_messages = []
-        self.I=0
 
     def receive_consensus_message(self, message):
         for m in message.justification:
@@ -92,7 +91,6 @@ class Validator:
         return sharded_fork_choice(genesis_blocks, blocks, self.get_weighted_blocks())
 
     def make_block(self, shard_ID, mempools, drain_amount, TTL=TTL_CONSTANT):
-        self.I += 1
         # first we execute the fork choice rule
         fork_choice = self.fork_choice()
         prevblock = fork_choice[shard_ID]
@@ -164,7 +162,6 @@ class Validator:
         if old_state != new_vm_state:
             print("data:", data)
         # print("\n\n\n\n")
-        # print(self.I, "--------------------------------------------------------------------")
 
         # we now package the sent_log with new messages that deliver these payloads
         new_sent_messages = []

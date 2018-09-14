@@ -1,4 +1,5 @@
 import random
+import copy
 import json 
 import random
 import hashlib
@@ -20,6 +21,7 @@ from config import NUM_BETWEEN_SHARD_RECEIPTS_PER_PROPOSAL
 from config import MEMPOOL_DRAIN_RATE
 from config import REPORT_INTERVAL
 from config import PAUSE_LENGTH
+
 
 # Setup
 GENESIS_BLOCKS = {}
@@ -86,31 +88,50 @@ for i in range(NUM_PROPOSALS):
     # RECEIVE CONSENSUS MESSAGES WITHIN SHARD
     for j in range(NUM_WITHIN_SHARD_RECEIPTS_PER_PROPOSAL):
         # recieve a new message for a random validator
-        next_receiver = random.choice(shard_assignment[rand_ID])
-        receiving_from = random.choice(shard_assignment[rand_ID])
-        assert next_receiver != watcher.name, "didn't except the watcher"
-        if len(viewables[next_receiver][receiving_from]) > 0:  # if they have any viewables at all
-            received_message = viewables[next_receiver][receiving_from][0]
-            try:
-                validators[next_receiver].receive_consensus_message(received_message)
-                viewables[next_receiver][receiving_from].remove(received_message)
-            except UnresolvedDeps:
-                continue
+        next_receiver = random.choice(shard_assignment[rand_ID])\
+
+        pool = copy.copy(shard_assignment[rand_ID])
+        pool.remove(next_receiver)
+
+        new_received = False
+        while(not new_received and len(pool) > 0):
+
+            receiving_from = random.choice(pool)
+            pool.remove(receiving_from)
+            assert next_receiver != watcher.name, "didn't except the watcher"
+            if len(viewables[next_receiver][receiving_from]) > 0:  # if they have any viewables at all
+                received_message = viewables[next_receiver][receiving_from][0]
+                try:
+                    validators[next_receiver].receive_consensus_message(received_message)
+                    viewables[next_receiver][receiving_from].remove(received_message)
+                    new_received = True
+                except UnresolvedDeps:
+                    pass
 
     # RECEIVE CONSENSUS MESSAGES BETWEEN SHARDS
     for j in range(NUM_BETWEEN_SHARD_RECEIPTS_PER_PROPOSAL):
         # recieve a new message for a random validator
         next_receiver = random.choice(VALIDATOR_NAMES)
-        receiving_from = random.choice(VALIDATOR_NAMES)
-        if next_receiver == 0 or receiving_from == 0:
-            continue
-        if len(viewables[next_receiver][receiving_from]) > 0:  # if they have any viewables at all
-            received_message = viewables[next_receiver][receiving_from][0]
-            try:
-                validators[next_receiver].receive_consensus_message(received_message)
-                viewables[next_receiver][receiving_from].remove(received_message)
-            except UnresolvedDeps:
+
+        pool = copy.copy(VALIDATOR_NAMES)
+        pool.remove(next_receiver)
+
+        new_received = False
+        while(not new_received and len(pool) > 0):
+
+            receiving_from = random.choice(pool)
+            pool.remove(receiving_from)
+
+            if next_receiver == 0 or receiving_from == 0:
                 continue
+            if len(viewables[next_receiver][receiving_from]) > 0:  # if they have any viewables at all
+                received_message = viewables[next_receiver][receiving_from][0]
+                try:
+                    validators[next_receiver].receive_consensus_message(received_message)
+                    viewables[next_receiver][receiving_from].remove(received_message)
+                    new_received = True
+                except UnresolvedDeps:
+                    pass
 
 
     # DRAW VISUALIZATION:

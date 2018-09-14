@@ -1,5 +1,6 @@
 from blocks import Block, Message
 from blocks import ReceivedLog
+from blocks import SentLog
 from config import SHARD_IDS
 from config import VALIDATOR_NAMES
 from config import VALIDATOR_WEIGHTS
@@ -8,8 +9,14 @@ from evm_transition import apply_to_state
 
 from fork_choice import sharded_fork_choice
 
+import copy
+
+class UnresolvedDeps(Exception):
+    pass
+
+
 class ConsensusMessage:
-    def __init__(self, block, name, justification):
+    def __init__(self, block, name, justification=[]):
         self.estimate = block
         self.sender = name
         self.justification = justification
@@ -17,32 +24,28 @@ class ConsensusMessage:
         assert isinstance(self.estimate, Block), "expected block"
         assert self.sender in VALIDATOR_NAMES
 
-        if len(self.justification) == 0:
-            self.height = 0
-
+        self.height = 0
+        max_height = 0
         for m in self.justification:
             assert isinstance(m, ConsensusMessage), "expected justification to contain consensus messages"
-            self.height = 0
-            if m.sender == self.sender:
-                self.height += 1
+            if m.height > max_height:
+                max_height = m.height
+
+        self.height = max_height + 1
 
 class Validator:
-    def __init__(self, name, starting_blocks):
+    def __init__(self, name):
         assert name in VALIDATOR_NAMES, "expected a validator name"
         self.name = name
         self.consensus_messages = []
-        assert isinstance(starting_blocks, dict), "expected dict"
-        for ID in SHARD_IDS:
-            assert ID in starting_blocks.keys(), "expected to have starting blocks for all shard IDs"
-        for b in starting_blocks.values():
-            assert isinstance(b, Block), "expected starting blocks to be blocks"
 
-        self.starting_blocks = starting_blocks
+    def receive_consensus_message(self, message):
+        for m in message.justification:
+            assert isinstance(m, ConsensusMessage), "expected consensus message"
+            if m not in self.consensus_messages:
+                raise UnresolvedDeps
 
-
-    def receive_consensus_messages(self, messages):
-        for m in messages:
-            self.consensus_messages.append(m)
+        self.consensus_messages.append(message)
 
     # assumes no equivocations exist
     def latest_messages(self):
@@ -79,15 +82,32 @@ class Validator:
     def fork_choice(self):
         # the blocks in the view are the genesis blocks and blocks from consensus messages
         blocks = self.get_blocks_from_consensus_messages()
-        for b in self.starting_blocks.values():
-            blocks.append(b)
 
-        return sharded_fork_choice(self.starting_blocks, blocks, self.get_weighted_blocks())
+        #  maybe this should be a parameter, but it's not so bad
+        genesis_blocks = {}
+        for m in self.consensus_messages:
+            if m.sender == 0:
+                genesis_blocks[m.estimate.shard_ID] = m.estimate
 
-    def make_block(self, shard_ID, data, TTL=TTL_CONSTANT):
+        return sharded_fork_choice(genesis_blocks, blocks, self.get_weighted_blocks())
+
+    def make_block(self, shard_ID, mempools, drain_amount, TTL=TTL_CONSTANT):
         # first we execute the fork choice rule
         fork_choice = self.fork_choice()
         prevblock = fork_choice[shard_ID]
+
+        prev_txn_log = prevblock.txn_log
+
+        new_txn_log = copy.copy(prev_txn_log)
+        data = []
+        num_prev_txs = len(prev_txn_log)
+        print("num_prev_txs",num_prev_txs)
+        print("mempools[shard_ID] == prev_txn_log", mempools[shard_ID] == prev_txn_log)
+        for i in range(drain_amount):
+            if num_prev_txs + i < len(mempools[shard_ID]):
+                new_tx = mempools[shard_ID][num_prev_txs + i]
+                new_txn_log.append(new_tx)
+                data.append(new_tx)
 
         # then put together the new received log
         received_log = ReceivedLog()
@@ -102,21 +122,22 @@ class Validator:
         # which has the following newly received messages:
         newly_received_messages = {}
         for ID in SHARD_IDS:
-            if ID == shard_ID:
-                continue
 
             previous_received_log_size = len(prevblock.received_log.log[ID])
             current_received_log_size = len(received_log.log[ID])
             assert current_received_log_size >= previous_received_log_size, "did not expect log size to shrink"
 
+            if current_received_log_size > previous_received_log_size:
+                print("RECEIVED LOG IS GROWING!!")
+
+
             newly_received_messages[ID] = received_log.log[ID][previous_received_log_size:]
 
         # which have the following newly received payloads:
-        newly_received_payloads = {}
+        newly_received_payloads = ReceivedLog()
         for ID in SHARD_IDS:
-            if ID == shard_ID:
-                continue
-            newly_received_payloads[ID] = [m.message_payload for m in newly_received_messages[ID]]
+            for m in newly_received_messages[ID]:
+                newly_received_payloads.add_received_message(ID, m)
 
         '''
         KEY INTEGRATION HERE
@@ -124,29 +145,48 @@ class Validator:
 
         # this is where we have this function that produces the new vm state and the new outgoing payloads
         # new_vm_state, new_outgoing_payloads = INTEGRATE_HERE(prevblock.vm_state, data, newly_received_payloads)
-         
-        print(prevblock.vm_state)
+        
+        old_state = copy.copy(prevblock.vm_state)
+
+        # TEST
+        newly_received_payloads = ReceivedLog()
+
         new_vm_state, new_outgoing_payloads = apply_to_state(prevblock.vm_state, data, newly_received_payloads)
-        # need new_outgoing_payloads is a dict of shard id to new payloads
-        print(new_outgoing_payloads)
-        # new_vm_state = prevblock.vm_state
-        # new_outgoing_payloads = {}
-        # for ID in SHARD_IDS:
-        #     new_outgoing_payloads[ID] = []
+
+        print("new_outgoing_payloads", new_outgoing_payloads)
+        #if data != []:
+        #    print("data", data)
+        # print("--------------------------------------------------------------------")
+        for ID in SHARD_IDS:
+            if new_outgoing_payloads.log[ID] != []:
+                print("NEW OUTGOING PAYLOADS[",ID,"]", new_outgoing_payloads.log[ID])
+
+        # print("--------------------------------------------------------------------")
+        # print("new_vm_state", new_vm_state)
+        # print("old_state == new_vm_state", old_state == new_vm_state)
+        if old_state != new_vm_state:
+            print("data:", data)
+        # print("\n\n\n\n")
 
         # we now package the sent_log with new messages that deliver these payloads
-        new_sent_messages = []
-        shard_IDs = []
+        new_sent_messages = SentLog()
         for ID in SHARD_IDS:
-            for payload in new_outgoing_payloads[ID]:
-                new_sent_messages.append(Message(fork_choice[ID], TTL, payload))
-                shard_IDs.append(ID)
-        
-        sent_log = prevblock.sent_log.add_sent_messages(shard_IDs, new_sent_messages)
-        return Block(shard_ID, prevblock, data, sent_log, received_log, new_vm_state)
+            if ID != shard_ID:
+                for m in new_outgoing_payloads.log[ID]:
+                    print("NEW OUTGOING PAYLOAD", m)
+                    new_sent_messages.log[ID].append(Message(fork_choice[ID], TTL, m.message_payload))
 
-    def make_new_consensus_message(self, shard_ID, data, TTL=TTL_CONSTANT):
-        new_block = self.make_block(shard_ID, data, TTL)
-        new_message = ConsensusMessage(new_block, self.name, self.consensus_messages)
-        self.consensus_messages.append(new_message)
+        sent_log = prevblock.sent_log.append_SentLog(new_sent_messages)
+
+        return Block(shard_ID, prevblock, new_txn_log, sent_log, received_log, new_vm_state)
+
+    def make_new_consensus_message(self, shard_ID, mempools, drain_amount, TTL=TTL_CONSTANT):
+
+        assert shard_ID in SHARD_IDS, "expected shard ID"
+        assert isinstance(drain_amount, int), "expected int"
+        assert isinstance(TTL, int), "expected int"
+        assert isinstance(mempools, dict), "expected dict"
+        new_block = self.make_block(shard_ID, mempools, drain_amount, TTL)
+        new_message = ConsensusMessage(new_block, self.name, copy.copy(self.consensus_messages))
+        self.receive_consensus_message(new_message)
         return new_message

@@ -76,15 +76,16 @@ def convert_state_to_pre(state):
 #   `MessagePayload`s. (This is done via `web3.eth.account.signTransaction(…)`.)
 # function apply(vm_state, [tx], mapping(S => received)) -> (vm_state, mapping(S => received) )
 def apply_to_state(pre_state, tx, received_log):
+    assert isinstance(received_log, ReceivedLog), "expected received log"
     # print(pre_state["pre"][address]["nonce"])   
     nonce = int(pre_state["pre"][address]["nonce"], 0)
-    flattened_payloads = [message.message_payload for l in received_log.values() for message in l]
+    flattened_payloads = [message.message_payload for l in received_log.log.values() for message in l]
     for payload in flattened_payloads:
         transaction = {
             "gas": 3000000,
             "gasPrice": "0x2",
             "nonce": hex(nonce),
-            "to": payload.toAddress.lower()[2:],
+            "to": payload.toAddress.lower()[2:],  # long term should verify checksum before lowering the address
             "value": payload.value,
             "data": payload.data,
         }
@@ -105,7 +106,7 @@ def apply_to_state(pre_state, tx, received_log):
     print(transition_inputs)
 
     out = evm.communicate(json.dumps(transition_inputs).encode())[0].decode('utf-8')
-    print("out2", out)
+    # print("out2", out)
     result = json.loads(out)
     new_state = {
         "env": pre_state["env"],
@@ -128,14 +129,18 @@ def apply_to_state(pre_state, tx, received_log):
             for event in contract.events.SentMessage().processReceipt(receipt):
                 sent_log.add_sent_message(
                     event.args.shard_ID,
-                    MessagePayload(
-                        event.args.sendFromAddress.lower()[2:],
-                        event.args.sendToAddress.lower()[2:],
-                        event.args.value,
-                        event.args.data,
+                    Message(
+                        Block(event.args.shard_ID),
+                        10,
+                        MessagePayload(
+                            event.args.sendFromAddress.lower()[2:],
+                            event.args.sendToAddress.lower()[2:],
+                            event.args.value,
+                            event.args.data,
+                        )
                     )
                 )
-    return new_state, sent_log.log
+    return new_state, sent_log
 
 # received_log = ReceivedLog()
 # received_log.add_received_message(2, Message(

@@ -3,7 +3,7 @@
 This repository contains a proof of concept for a sharding implementation on Ethereum by Vlad Zamfir. 
 The project was built during [ETHBerlin](http://ethberlin.com/), over 2 days, and should *not* be considered final nor production grade. There are probably major bugs/issues.
 
-## Getting started [to be updated]
+## Getting started
 
 The dependencies of the simulation (run with ```python simulator.py```), are satisfied by this Dockerfile:
 
@@ -59,11 +59,11 @@ RUN apt-get install -y pkg-config
 RUN pip3 install --upgrade matplotlib
 
 ```
-I build it with ```sudo docker build --tag py3web3mpl . ```, then run with my ```ethshardingpoc``` repo mounted as a volume:
+I build it with ```sudo docker build --tag py3web3mpl . ```, then run the container from the ```ethshardingpoc``` repo, mounting it as a docker volume with the command:
 ```
-sudo docker run -it --net=host --env="DISPLAY" --volume="$HOME/.Xauthority:/root/.Xauthority:rw" --volume "$(pwd)"/Documents/programming/python/ethshardingpoc:/ethshardingpoc py3web3mpl
+sudo docker run -it --net=host --env="DISPLAY" --volume="$HOME/.Xauthority:/root/.Xauthority:rw" --volume "$(pwd)":/ethshardingpoc py3web3mpl
 ```
-
-## Known Issues
-- Need to make sure entire repository is Python >3.5 compatible.
-- `simulator.py` crashing. See [Issue #3](https://github.com/smarx/ethshardingpoc/issues/3)
+Note that it uses X11 to display matplotlib, so please use it at your own risk, maybe by running the simulation in the container:
+```
+cd ethshardingpoc && python simulator.py 
+```

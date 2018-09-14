@@ -116,8 +116,8 @@ class Validator:
                 continue
 
             # we're just going to receive every send that we see from the fork choice (which filtered blocks who don't recieve things before their TTLs)
-            received_log.sources[ID] = fork_choice[ID]
-            received_log.log[ID] = fork_choice[ID].sent_log.log[shard_ID]
+            received_log.sources[ID] = copy.copy(fork_choice[ID])
+            received_log.log[ID] = copy.copy(fork_choice[ID].sent_log.log[shard_ID])
 
         # which has the following newly received messages:
         newly_received_messages = {}

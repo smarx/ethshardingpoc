@@ -3,7 +3,7 @@
 This repository contains a proof of concept for a sharding implementation on Ethereum by Vlad Zamfir. 
 The project was built during [ETHBerlin](http://ethberlin.com/), over 2 days, and should *not* be considered final nor production grade. There are probably major bugs/issues.
 
-## Getting started [to be updated]
+## Getting started
 
 The dependencies of the simulation (run with ```python simulator.py```), are satisfied by this Dockerfile:
 

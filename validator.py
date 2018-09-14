@@ -1,5 +1,6 @@
 from blocks import Block, Message
 from blocks import ReceivedLog
+from blocks import SentLog
 from config import SHARD_IDS
 from config import VALIDATOR_NAMES
 from config import VALIDATOR_WEIGHTS
@@ -133,9 +134,10 @@ class Validator:
             newly_received_messages[ID] = received_log.log[ID][previous_received_log_size:]
 
         # which have the following newly received payloads:
-        newly_received_payloads = {}
+        newly_received_payloads = ReceivedLog()
         for ID in SHARD_IDS:
-            newly_received_payloads[ID] = [m.message_payload for m in newly_received_messages[ID]]
+            for m in newly_received_messages[ID]:
+                newly_received_payloads.add_received_message(ID, m)
 
         '''
         KEY INTEGRATION HERE
@@ -146,15 +148,18 @@ class Validator:
         
         old_state = copy.copy(prevblock.vm_state)
 
+        # TEST
+        newly_received_payloads = ReceivedLog()
+
         new_vm_state, new_outgoing_payloads = apply_to_state(prevblock.vm_state, data, newly_received_payloads)
 
-        print("new_outgoing_payloads",new_outgoing_payloads)
+        print("new_outgoing_payloads", new_outgoing_payloads)
         #if data != []:
         #    print("data", data)
         # print("--------------------------------------------------------------------")
         for ID in SHARD_IDS:
-            if new_outgoing_payloads[ID] != []:
-                print("NEW OUTGOING PAYLOADS[",ID,"]", new_outgoing_payloads[ID])
+            if new_outgoing_payloads.log[ID] != []:
+                print("NEW OUTGOING PAYLOADS[",ID,"]", new_outgoing_payloads.log[ID])
 
         # print("--------------------------------------------------------------------")
         # print("new_vm_state", new_vm_state)
@@ -164,19 +169,23 @@ class Validator:
         # print("\n\n\n\n")
 
         # we now package the sent_log with new messages that deliver these payloads
-        new_sent_messages = []
-        shard_IDs = []
+        new_sent_messages = SentLog()
         for ID in SHARD_IDS:
             if ID != shard_ID:
-                for payload in new_outgoing_payloads[ID]:
-                    print("NEW OUTGOING PAYLOAD", payload)
-                    new_sent_messages.append(Message(fork_choice[ID], TTL, payload))
-                    shard_IDs.append(ID)
+                for m in new_outgoing_payloads.log[ID]:
+                    print("NEW OUTGOING PAYLOAD", m)
+                    new_sent_messages.log[ID].append(Message(fork_choice[ID], TTL, m.message_payload))
 
-        sent_log = prevblock.sent_log.add_sent_messages(shard_IDs, new_sent_messages)
+        sent_log = prevblock.sent_log.append_SentLog(new_sent_messages)
+
         return Block(shard_ID, prevblock, new_txn_log, sent_log, received_log, new_vm_state)
 
     def make_new_consensus_message(self, shard_ID, mempools, drain_amount, TTL=TTL_CONSTANT):
+
+        assert shard_ID in SHARD_IDS, "expected shard ID"
+        assert isinstance(drain_amount, int), "expected int"
+        assert isinstance(TTL, int), "expected int"
+        assert isinstance(mempools, dict), "expected dict"
         new_block = self.make_block(shard_ID, mempools, drain_amount, TTL)
         new_message = ConsensusMessage(new_block, self.name, copy.copy(self.consensus_messages))
         self.receive_consensus_message(new_message)

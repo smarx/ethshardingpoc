@@ -67,10 +67,6 @@ for i in range(NUM_PROPOSALS):
     # print("new_message.sender()", new_message.sender)
     watcher.receive_consensus_message(new_message)  # here the watcher is, receiving all the messages
 
-    # print("rand_ID", rand_ID)
-    # print("data", data)
-    # print("proposal", i, "shard ID", rand_ID, "block", new_message.estimate, "height", new_message.estimate.height)
-
     if FREE_INSTANT_BROADCAST:
         for v in VALIDATOR_NAMES:
             validators[v].receive_consensus_message(new_message)
@@ -95,7 +91,7 @@ for i in range(NUM_PROPOSALS):
                 receiving_from = random.choice(pool)
                 pool.remove(receiving_from)
                 assert next_receiver != watcher.name, "didn't except the watcher"
-                print("len(viewables[",next_receiver,"][",receiving_from,"]) : ", len(viewables[next_receiver][receiving_from]))
+                # print("len(viewables[",next_receiver,"][",receiving_from,"]) : ", len(viewables[next_receiver][receiving_from]))
                 if len(viewables[next_receiver][receiving_from]) > 0:  # if they have any viewables at all
                     received_message = viewables[next_receiver][receiving_from][0]
                     try:
@@ -122,7 +118,7 @@ for i in range(NUM_PROPOSALS):
 
                     if next_receiver == 0 or receiving_from == 0:
                         continue
-                    print("len(viewables[",next_receiver,"][",receiving_from,"]) : ", len(viewables[next_receiver][receiving_from]))
+                    # print("len(viewables[",next_receiver,"][",receiving_from,"]) : ", len(viewables[next_receiver][receiving_from]))
                     if len(viewables[next_receiver][receiving_from]) > 0:  # if they have any viewables at all
                         received_message = viewables[next_receiver][receiving_from][0]
                         try:
@@ -138,43 +134,96 @@ for i in range(NUM_PROPOSALS):
         plt.clf()
         fork_choice = watcher.fork_choice()
         SHARD_SPACING_CONSTANT = 3
-        BlocksGraph = nx.Graph();
-        ValidChainGraph = nx.Graph();
-        MessagesGraph = nx.Graph();
 
-        blockPos = {}
+        PrevblockGraph = nx.DiGraph();
+        ForkChoiceGraph = nx.DiGraph();
+        SourcesGraph = nx.DiGraph();
+        
+        messagesPos = {}
         senders = {}
+        block_to_message = {}
 
-        blocks = watcher.get_blocks_from_consensus_messages()
-        for ID in SHARD_IDS:
-            block = GENESIS_BLOCKS[ID]
-            blocks.append(block)
-            blockPos[block] = (block.height, SHARD_SPACING_CONSTANT*block.shard_ID + 3*ID + 1.5)
+        messages = watcher.consensus_messages
+        for m in messages:
 
-        for ID in SHARD_IDS:
-            for ID2 in SHARD_IDS:
-                if fork_choice[ID].received_log.sources[ID2] is not None:
-                    MessagesGraph.add_edge(fork_choice[ID], fork_choice[ID].received_log.sources[ID2])
+            PrevblockGraph.add_node(m)
+            ForkChoiceGraph.add_node(m)
+            SourcesGraph.add_node(m)
 
-        for message in watcher.consensus_messages:
-            if message.sender != 0:
-                block = message.estimate
-                BlocksGraph.add_node(block)
-                ValidChainGraph.add_node(block)
-                blockPos[block] = (message.height, SHARD_SPACING_CONSTANT*block.shard_ID + message.sender)
-                if block.prevblock is not None and block.prevblock in blocks:
-                    BlocksGraph.add_edge(block, block.prevblock)
-                nx.draw_networkx_nodes(BlocksGraph, blockPos, node_shape='s', node_color='b', node_size=5)
-                nx.draw_networkx_edges(BlocksGraph, blockPos) 
+            # get positions:
+            if m.sender != 0:
+                messagesPos[m] = (m.height, SHARD_SPACING_CONSTANT*m.estimate.shard_ID + 1.5 + m.sender)
+            else:  # genesis blocks
+                messagesPos[m] = (m.height - 1, SHARD_SPACING_CONSTANT*m.estimate.shard_ID + 1.5 + 2 + 3*m.estimate.shard_ID)
 
+            # this map will help us draw nodes from prevblocks, sources, etc
+            block_to_message[m.estimate] = m
 
+            # define edges for prevblock graph
+            if m.estimate.prevblock is not None:
+                PrevblockGraph.add_edge(m, block_to_message[m.estimate.prevblock])
+
+            for ID in SHARD_IDS:
+               # SourcesGraph define edges
+                if m.estimate.received_log.sources[ID] is not None:
+                    SourcesGraph.add_edge(m, block_to_message[m.estimate.received_log.sources[ID]])
+
+        # ForkChoiceGraph define edges
         for ID in SHARD_IDS:
             this_block = fork_choice[ID]
             while(this_block.prevblock is not None):
-                ValidChainGraph.add_edge(this_block, this_block.prevblock)
+                ForkChoiceGraph.add_edge(block_to_message[this_block], block_to_message[this_block.prevblock])
                 this_block = this_block.prevblock
-            nx.draw_networkx_edges(ValidChainGraph, blockPos, edge_color='g', width = 5)
-            nx.draw_networkx_edges(MessagesGraph, blockPos, edge_color='y', width = 0.5, style='dashed')
+
+
+        # Draw edges
+        nx.draw_networkx_edges(SourcesGraph, messagesPos, style='dashdot', edge_color='y', arrowsize=10, width=1)
+        nx.draw_networkx_edges(ForkChoiceGraph, messagesPos, edge_color='#66b266', width=10)
+        nx.draw_networkx_edges(PrevblockGraph, messagesPos, width=3)
+
+        nx.draw_networkx_nodes(PrevblockGraph, messagesPos, node_shape='s', node_color='#0066cc', node_size=300)
+
+        ShardMessagesGraph = nx.Graph();
+        ShardMessagesOriginGraph = nx.Graph();
+        shard_messagesPos = {}
+
+        message_sender_map = {}
+        for m in messages:
+            ShardMessagesOriginGraph.add_node(m)
+
+            shard_messagesPos[m] = (m.height,  SHARD_SPACING_CONSTANT*m.estimate.shard_ID + 1.5 + m.sender)
+
+            for ID in SHARD_IDS:
+                for m2 in m.estimate.newly_sent()[ID]:
+                    message_sender_map[m2] = m
+                    ShardMessagesGraph.add_node(m2)
+                    ShardMessagesOriginGraph.add_node(m2)
+                    xoffset = rand.choice([rand.uniform(-0.5, -0.4), rand.uniform(0.4, 0.5)])
+                    yoffset = rand.choice([rand.uniform(-0.5, -0.4), rand.uniform(0.4, 0.5)])
+                    shard_messagesPos[m2] = (m.height + xoffset,  SHARD_SPACING_CONSTANT*m.estimate.shard_ID + 1.5 + m.sender + yoffset)
+                    ShardMessagesOriginGraph.add_edge(m, m2)
+
+
+        nx.draw_networkx_nodes(ShardMessagesOriginGraph, shard_messagesPos, node_size=0)
+        nx.draw_networkx_nodes(ShardMessagesGraph, shard_messagesPos, node_shape='o', node_color='#f6546a', node_size=250)
+        nx.draw_networkx_edges(ShardMessagesOriginGraph, shard_messagesPos, width=6, style='dotted')
+
+        Orphaned_ShardMessagesDestinationGraph = nx.DiGraph();
+        Agreeing_ShardMessagesDestinationGraph = nx.DiGraph();
+        for m in messages:
+            for ID in SHARD_IDS:
+                for m2 in m.estimate.newly_received()[ID]:
+                    if m2 in message_sender_map.keys():
+                        A = fork_choice[message_sender_map[m2].estimate.shard_ID].is_in_chain(message_sender_map[m2].estimate)
+                    else:
+                        A = True
+                    if fork_choice[m.estimate.shard_ID].is_in_chain(m.estimate) and A:
+                        Agreeing_ShardMessagesDestinationGraph.add_edge(m2, m)
+                    else:
+                        Orphaned_ShardMessagesDestinationGraph.add_edge(m2, m)
+
+        nx.draw_networkx_edges(Agreeing_ShardMessagesDestinationGraph, shard_messagesPos, edge_color='#600787', arrowsize=20, arrowstyle='->', width=4)
+        nx.draw_networkx_edges(Orphaned_ShardMessagesDestinationGraph, shard_messagesPos, edge_color='#600787', arrowsize=20, arrowstyle='->', width=1.5)
 
         plt.axis('off')
         plt.draw()

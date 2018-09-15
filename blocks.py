@@ -2,6 +2,7 @@ from genesis_state import genesis_state
 
 from config import SHARD_IDS
 from config import VALIDITY_CHECKS_OFF
+from config import VALIDITY_CHECKS_WARNING_OFF
 import random as rand
 
 
@@ -78,6 +79,7 @@ class ReceivedLog:
         for i in range(len(shard_ids)):
             self.add_received_message(shard_IDs[i], messages[i])
         return self
+
 
 class Block:
     def __init__(self, ID, prevblock=None, txn_log=[], sent_log=None, received_log=None, vm_state=genesis_state):
@@ -183,15 +185,16 @@ class Block:
 
         return new_received
 
-    # GOAL: MAKE THIS CONSTANT TIME
+    # Goal: make this constant time
     def is_valid(self):
+
+        # THE VALIDITY SWITCH
         if VALIDITY_CHECKS_OFF:
-            print("Warning: Validity checks off")
+            if not VALIDITY_CHECKS_WARNING_OFF:
+                print("Warning: Validity checks off")
             return True, "VALIDITY_CHECKS_OFF"
 
-        '''
-        Type checking each value of the block tuple:
-        '''
+        # CHECKING INDIVIDUAL TYPES OF INDIVIDUAL DATA FIELDS
         if self.shard_ID not in SHARD_IDS:
             return False, "expected a shard ID"
         if self.prevblock is not None:
@@ -207,24 +210,21 @@ class Block:
         #leaving out the genesis blocks for now..
         if self.prevblock is None:
             return True, "Genesis block taken as valid"
+        # --------------------------------------------------------------------#
 
-        '''
-        Type check consistency conditions between the values of the block
-        '''
+
+        # we're going to need these over and over again:
+        new_sent_messages = self.newly_sent()
+        new_received_messages = self.newly_received()
+
+
+        # SHARD ID VALIDITY CONDITIONS
 
         # check that the prev block is on the same shard as this block
         if self.shard_ID != self.prevblock.shard_ID:
             return False, "prevblock should be on same shard as this block"
 
-        new_sent_messages = self.newly_sent()
-        new_received_messages = self.newly_received()
-
         for ID in SHARD_IDS:
-
-            '''
-            Validity conditions for shard IDs
-            '''
-
             # bases for messages sent to shard i are on shard i
             for message in new_sent_messages[ID]:
                 if message.base.shard_ID != ID:
@@ -235,14 +235,15 @@ class Block:
                 if message.base.shard_ID != self.shard_ID:
                     return False, "received message with base on different shard"
 
+            # sources of messages received from shard i are on shard i
             if self.received_log.sources[ID] is not None:
-                # sources of messages received from shard i are on shard i
                 if self.received_log.sources[ID].shard_ID != ID:
                     return False, "source for shard i on shard j != i"
+        # --------------------------------------------------------------------#
 
-            '''
-            Monotonicity conditions
-            '''
+
+        # MONOTONICITY/AGREEMENT CONDITIONS
+        for ID in SHARD_IDS:
 
             # previous tx list is a prefix of this txn list
             prev_num_txs = len(self.prevblock.txn_log)
@@ -313,38 +314,35 @@ class Block:
                             return False, "expected sources to be monotonic"
 
                 # sources after bases
+                # ... easier to check than agreement between bases and sources,
+                # ... also easy for a block producer to enforce
                 if len(self.prevblock.sent_log.log[ID]) > 0:
                     source = self.received_log.sources[ID]
-                    base = last_old_sent_message.base
-                    if not source.is_in_chain(base):
+                    base = last_old_sent_message.base  # most recent base from prev block
+                    if not source.is_in_chain(base):  # source is after ^^
                         return False, "expected bases to be in the chaing of sources -- error 1"
 
                 if len(new_sent_messages[ID]) > 0:
-                    base = new_sent_messages[ID][-1].base
-                    if not source.is_in_chain(base):
+                    base = new_sent_messages[ID][-1].base  # most recent base from this block
+                    if not source.is_in_chain(base): # source is also after ^^
                         return False, "expected bases to be in the chain of sources -- error 2"
 
-            '''
-            Conditions on message receipt
-            '''
+        # --------------------------------------------------------------------#
+
+
+        # SOURCE SYNCHRONICITY CONDITIONS
+        for ID in SHARD_IDS:
+
             if self.received_log.sources[ID] is not None:
 
+                source = self.received_log.sources[ID]
+
                 # check that the received messages are sent by the source
-                # warning: inefficient
-                for i in range(len(self.received_log.log[ID])):
-                    if self.received_log.log[ID][i] != self.received_log.sources[ID].sent_log.log[self.shard_ID][i]:
+                for i in range(len(self.received_log.log[ID])):  # warning: inefficient
+                    if self.received_log.log[ID][i] != source.sent_log.log[self.shard_ID][i]:
                         return False, "expected the received messages were sent by source"
 
-                # newly received messages are received by the TTL of the base
-                for message in new_received_messages[ID]:
-                    if not self.is_in_chain(message.base):
-                        return False, "expected only to receive messages with base in chain"
-                    # Message on received this block are expired if...
-                    if message.base.height + message.TTL < self.height:
-                        return False, "message not received within TTL of its base"
-
-                # their sent messages are received by the TTL as seen from our sources
-                source = self.received_log.sources[ID]
+                # their sent messages are received by the TTL as seen from the sources
                 for m in source.sent_log.log[self.shard_ID]:  # inefficient
                     if m in self.received_log.log[ID]:
                         continue
@@ -359,16 +357,30 @@ class Block:
                     # a message outgoing from this shard that hasn't been received is expired if...
                     if m.base.height + m.TTL <= source.height:
                         return False, "expected all expired sent messages to be received by source"
+        # --------------------------------------------------------------------#
 
-                # our sent messages are received by the TTL as seen from our bases
-                for m1 in self.sent_log.log[ID]:  # super inefficient
-                    for m2 in self.sent_log.log[ID]:
-                        if m1 in m2.base.received_log.log[self.shard_ID]:
-                            continue
-                        # m1 from this shard that hasn't been received by m2.base, and is expired if...
-                        if m1.base.height + m1.TTL <= m2.base.height:
-                                return False, "expected sent messages to be received by the TTL"
 
+        # BASE SYNCHRONICITY CONDITIONS
+        for ID in SHARD_IDS:
+            # newly received messages are received by the TTL of the base
+            for message in new_received_messages[ID]:
+                if not self.is_in_chain(message.base):
+                    return False, "expected only to receive messages with base in chain"
+                # Message on received this block are expired if...
+                if message.base.height + message.TTL < self.height:
+                    return False, "message not received within TTL of its base"
+
+            # our sent messages are received by the TTL as seen from our bases
+            for m1 in self.sent_log.log[ID]:  # super inefficient
+                for m2 in self.sent_log.log[ID]:
+                    if m1 in m2.base.received_log.log[self.shard_ID]:
+                        continue
+                    # m1 from this shard that hasn't been received by m2.base, and is expired if...
+                    if m1.base.height + m1.TTL <= m2.base.height:
+                            return False, "expected sent messages to be received by the TTL"
+        # --------------------------------------------------------------------#
+
+        # made it!
         return True, "Valid block"
 
 

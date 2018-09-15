@@ -102,9 +102,6 @@ def apply_to_state(pre_state, tx, received_log):
     # open evm
     evm = subprocess.Popen([evm_path, 'apply', '/dev/stdin'], stdin=subprocess.PIPE, stdout=subprocess.PIPE)
 
-    # pipe state into that process
-    print(transition_inputs)
-
     out = evm.communicate(json.dumps(transition_inputs).encode())[0].decode('utf-8')
     # print("out2", out)
     result = json.loads(out)

@@ -1,9 +1,9 @@
 import random
 import copy
-import json 
+import json
 import random
 import hashlib
-import numpy as np 
+import numpy as np
 import networkx as nx
 import matplotlib.pyplot as plt
 
@@ -53,7 +53,7 @@ for v in VALIDATOR_NAMES:
         viewables[v][w] = []
 
 # SIMULATION LOOP:
-for i in range(NUM_PROPOSALS):
+for i in range(NUM_ROUNDS):
     # Make a new message from a random validator on a random shard
     rand_ID = random.choice(SHARD_IDS)
     next_proposer = 3*rand_ID + random.randint(1, 3)
@@ -64,7 +64,6 @@ for i in range(NUM_PROPOSALS):
     # MAKE CONSENSUS MESSAGE
     new_message = validators[next_proposer].make_new_consensus_message(rand_ID, mempools, drain_amount=MEMPOOL_DRAIN_RATE)
 
-    # print("new_message.sender()", new_message.sender)
     watcher.receive_consensus_message(new_message)  # here the watcher is, receiving all the messages
 
     if FREE_INSTANT_BROADCAST:
@@ -78,9 +77,9 @@ for i in range(NUM_PROPOSALS):
             viewables[v][next_proposer].append(new_message)  # validators have the possibility of later viewing this message
 
         # RECEIVE CONSENSUS MESSAGES WITHIN SHARD
-        for j in range(NUM_WITHIN_SHARD_RECEIPTS_PER_PROPOSAL):
-            # recieve a new message for a random validator
-            next_receiver = random.choice(shard_assignment[rand_ID])\
+        for j in range(NUM_WITHIN_SHARD_RECEIPTS_PER_ROUND):
+
+            next_receiver = random.choice(shard_assignment[rand_ID])
 
             pool = copy.copy(shard_assignment[rand_ID])
             pool.remove(next_receiver)
@@ -90,8 +89,7 @@ for i in range(NUM_PROPOSALS):
 
                 receiving_from = random.choice(pool)
                 pool.remove(receiving_from)
-                assert next_receiver != watcher.name, "didn't except the watcher"
-                # print("len(viewables[",next_receiver,"][",receiving_from,"]) : ", len(viewables[next_receiver][receiving_from]))
+
                 if len(viewables[next_receiver][receiving_from]) > 0:  # if they have any viewables at all
                     received_message = viewables[next_receiver][receiving_from][0]
                     try:
@@ -101,33 +99,29 @@ for i in range(NUM_PROPOSALS):
                     except UnresolvedDeps:
                         pass
 
+        # RECEIVE CONSENSUS MESSAGES BETWEEN SHARDS
+        for j in range(NUM_BETWEEN_SHARD_RECEIPTS_PER_ROUND):
 
-            # RECEIVE CONSENSUS MESSAGES BETWEEN SHARDS
-            for j in range(NUM_BETWEEN_SHARD_RECEIPTS_PER_PROPOSAL):
-                # recieve a new message for a random validator
-                next_receiver = random.choice(VALIDATOR_NAMES)
+            pool = copy.copy(VALIDATOR_NAMES)
+            pool.remove(0)
 
-                pool = copy.copy(VALIDATOR_NAMES)
-                pool.remove(next_receiver)
+            next_receiver = random.choice(pool)
+            pool.remove(next_receiver)
 
-                new_received = False
-                while(not new_received and len(pool) > 0):
+            new_received = False
+            while(not new_received and len(pool) > 0):
 
-                    receiving_from = random.choice(pool)
-                    pool.remove(receiving_from)
+                receiving_from = random.choice(pool)
+                pool.remove(receiving_from)
 
-                    if next_receiver == 0 or receiving_from == 0:
-                        continue
-                    # print("len(viewables[",next_receiver,"][",receiving_from,"]) : ", len(viewables[next_receiver][receiving_from]))
-                    if len(viewables[next_receiver][receiving_from]) > 0:  # if they have any viewables at all
-                        received_message = viewables[next_receiver][receiving_from][0]
-                        try:
-                            validators[next_receiver].receive_consensus_message(received_message)
-                            viewables[next_receiver][receiving_from].remove(received_message)
-                            new_received = True
-                        except UnresolvedDeps:
-                            pass
-
+                if len(viewables[next_receiver][receiving_from]) > 0:  # if they have any viewables at all
+                    received_message = viewables[next_receiver][receiving_from][0]  # receive the next one in the list
+                    try:
+                        validators[next_receiver].receive_consensus_message(received_message)
+                        viewables[next_receiver][receiving_from].remove(received_message)
+                        new_received = True
+                    except UnresolvedDeps:
+                        pass
 
     # DRAW VISUALIZATION:
     if (i + 1) % REPORT_INTERVAL == 0:
@@ -138,7 +132,7 @@ for i in range(NUM_PROPOSALS):
         PrevblockGraph = nx.DiGraph();
         ForkChoiceGraph = nx.DiGraph();
         SourcesGraph = nx.DiGraph();
-        
+
         messagesPos = {}
         senders = {}
         block_to_message = {}
@@ -174,7 +168,6 @@ for i in range(NUM_PROPOSALS):
             while(this_block.prevblock is not None):
                 ForkChoiceGraph.add_edge(block_to_message[this_block], block_to_message[this_block.prevblock])
                 this_block = this_block.prevblock
-
 
         # Draw edges
         nx.draw_networkx_edges(SourcesGraph, messagesPos, style='dashdot', edge_color='y', arrowsize=10, width=1)
@@ -268,5 +261,5 @@ for i in range(NUM_PROPOSALS):
         plt.draw()
         plt.pause(PAUSE_LENGTH)
 
-# Leave plot open after going over all proposals 
+# Leave plot open after going over all proposals
 plt.show(block=True)

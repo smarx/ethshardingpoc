@@ -35,6 +35,7 @@ class ConsensusMessage:
 
         self.height = max_height + 1
 
+
 class Validator:
     def __init__(self, name):
         assert name in VALIDATOR_NAMES, "expected a validator name"
@@ -94,12 +95,19 @@ class Validator:
         return sharded_fork_choice(genesis_blocks, blocks, self.get_weighted_blocks())
 
     def make_block(self, shard_ID, mempools, drain_amount, TTL=TTL_CONSTANT):
-        # first we execute the fork choice rule
+
+        # RUN FORK CHOICE RULE
         fork_choice = self.fork_choice()
+        # --------------------------------------------------------------------#
+
+
+        # GET PREVBLOCK POINTER FROM FORK CHOICE
         prevblock = fork_choice[shard_ID]
+        # --------------------------------------------------------------------#
 
+
+        # EXTEND THE TRANSACTION LOG FROM THE MEMPOOL
         prev_txn_log = prevblock.txn_log
-
         new_txn_log = copy.copy(prev_txn_log)
         data = []
         num_prev_txs = len(prev_txn_log)
@@ -108,50 +116,50 @@ class Validator:
                 new_tx = mempools[shard_ID][num_prev_txs + i]
                 new_txn_log.append(new_tx)
                 data.append(new_tx)
+        # --------------------------------------------------------------------#
 
-        # then put together the new received log
+
+        # BUILD RECEIVED LOG WITH:
         received_log = ReceivedLog()
         for ID in SHARD_IDS:
             if ID == shard_ID:
                 continue
 
-            # we're just going to receive every send that we see from the fork choice (which filtered blocks who don't recieve things before their TTLs)
-            received_log.sources[ID] = copy.copy(fork_choice[ID])
-            received_log.log[ID] = copy.copy(fork_choice[ID].sent_log.log[shard_ID])
+            # SOURCES = FORK CHOICE (except for self)
+            received_log.sources[ID] = fork_choice[ID]
+            # RECEIVED = SENT MESSAGES FROM FORK CHOICE
+            received_log.log[ID] = fork_choice[ID].sent_log.log[shard_ID]
+        # --------------------------------------------------------------------#
 
-        # which has the following newly received messages:
+
+        # PREP NEWLY RECEIVED PMESSAGES IN A RECEIVEDLOG FOR EVM:
         newly_received_messages = {}
         for ID in SHARD_IDS:
-
             previous_received_log_size = len(prevblock.received_log.log[ID])
             current_received_log_size = len(received_log.log[ID])
             newly_received_messages[ID] = received_log.log[ID][previous_received_log_size:]
 
-        # which have the following newly received payloads:
         newly_received_payloads = ReceivedLog()
         for ID in SHARD_IDS:
             for m in newly_received_messages[ID]:
                 newly_received_payloads.add_received_message(ID, m)
+        # --------------------------------------------------------------------#
 
-        '''
-        KEY INTEGRATION HERE
-        '''
+
+        # KEY EVM INTEGRATION HERE
 
         # this is where we have this function that produces the new vm state and the new outgoing payloads
-        # new_vm_state, new_outgoing_payloads = INTEGRATE_HERE(prevblock.vm_state, data, newly_received_payloads)
+        # new_vm_state, new_outgoing_payloads = apply_to_state(prevblock.vm_state, data, newly_received_payloads)
 
-        old_state = copy.copy(prevblock.vm_state)
-
-        # TEST
+        # NOTE: we aren't executing the received logs because the EVM throws errors on them
+        # But at least we are receiving them in our blocks, with our fork choice rule
         newly_received_payloads = ReceivedLog()
 
         new_vm_state, new_outgoing_payloads = apply_to_state(prevblock.vm_state, data, newly_received_payloads)
+        # --------------------------------------------------------------------#
 
-        for ID in SHARD_IDS:
-            if new_outgoing_payloads.log[ID] != []:
-                print("NEW OUTGOING PAYLOADS[",ID,"]", new_outgoing_payloads.log[ID])
 
-        # we now package the sent_log with new messages that deliver these payloads
+        # BUILD SENT LOG FROM NEW OUTGOING PAYLOADS
         new_sent_messages = SentLog()
         for ID in SHARD_IDS:
             if ID != shard_ID:
@@ -165,6 +173,10 @@ class Validator:
                         print("Warning: Not sending message because TTL == 0")
 
         sent_log = prevblock.sent_log.append_SentLog(new_sent_messages)
+        # --------------------------------------------------------------------#
+
+
+
 
         return Block(shard_ID, prevblock, new_txn_log, sent_log, received_log, new_vm_state)
 

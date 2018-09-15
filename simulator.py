@@ -152,9 +152,9 @@ for i in range(NUM_PROPOSALS):
 
             # get positions:
             if m.sender != 0:
-                messagesPos[m] = (m.height, SHARD_SPACING_CONSTANT*m.estimate.shard_ID + 1.5 + m.sender)
+                messagesPos[m] = (m.height, SHARD_SPACING_CONSTANT*(1 - m.estimate.shard_ID) + 1.5 + 7 - m.sender)
             else:  # genesis blocks
-                messagesPos[m] = (m.height - 1, SHARD_SPACING_CONSTANT*m.estimate.shard_ID + 1.5 + 2 + 3*m.estimate.shard_ID)
+                messagesPos[m] = (m.height - 1, SHARD_SPACING_CONSTANT*(1 - m.estimate.shard_ID) + 1.5 + 5 - 3*m.estimate.shard_ID)
 
             # this map will help us draw nodes from prevblocks, sources, etc
             block_to_message[m.estimate] = m
@@ -191,7 +191,7 @@ for i in range(NUM_PROPOSALS):
         for m in messages:
             ShardMessagesOriginGraph.add_node(m)
 
-            shard_messagesPos[m] = (m.height,  SHARD_SPACING_CONSTANT*m.estimate.shard_ID + 1.5 + m.sender)
+            shard_messagesPos[m] = (m.height,  SHARD_SPACING_CONSTANT*(1 - m.estimate.shard_ID) + 1.5 + 7 - m.sender)
 
             for ID in SHARD_IDS:
                 for m2 in m.estimate.newly_sent()[ID]:
@@ -200,7 +200,7 @@ for i in range(NUM_PROPOSALS):
                     ShardMessagesOriginGraph.add_node(m2)
                     xoffset = rand.choice([rand.uniform(-0.5, -0.4), rand.uniform(0.4, 0.5)])
                     yoffset = rand.choice([rand.uniform(-0.5, -0.4), rand.uniform(0.4, 0.5)])
-                    shard_messagesPos[m2] = (m.height + xoffset,  SHARD_SPACING_CONSTANT*m.estimate.shard_ID + 1.5 + m.sender + yoffset)
+                    shard_messagesPos[m2] = (m.height + xoffset,  SHARD_SPACING_CONSTANT*(1 - m.estimate.shard_ID) + 1.5 + 7 - m.sender + yoffset)
                     ShardMessagesOriginGraph.add_edge(m, m2)
 
 
@@ -223,8 +223,47 @@ for i in range(NUM_PROPOSALS):
                         Orphaned_ShardMessagesDestinationGraph.add_edge(m2, m)
 
         nx.draw_networkx_edges(Agreeing_ShardMessagesDestinationGraph, shard_messagesPos, edge_color='#600787', arrowsize=20, arrowstyle='->', width=4)
-        nx.draw_networkx_edges(Orphaned_ShardMessagesDestinationGraph, shard_messagesPos, edge_color='#600787', arrowsize=20, arrowstyle='->', width=1.5)
+        nx.draw_networkx_edges(Orphaned_ShardMessagesDestinationGraph, shard_messagesPos, edge_color='#600787', arrowsize=20, arrowstyle='->', width=0.75)
 
+        ax = plt.axes()
+
+        ax.text(0, 0.2, 'child shard',
+        horizontalalignment='right',
+        verticalalignment='center',
+        rotation='vertical',
+        transform=ax.transAxes,
+        size=25)
+
+        ax.text(0, 0.75, 'parent shard',
+        horizontalalignment='right',
+        verticalalignment='center',
+        rotation='vertical',
+        transform=ax.transAxes,
+        size=25)
+
+        ax.text(0.1, 0, 'messages received by \n the child fork choice:',
+        horizontalalignment='center',
+        verticalalignment='bottom',
+        transform=ax.transAxes,
+        size=20)
+
+        ax.text(0.1, -0.05, len(fork_choice[1].received_log.log[0]),
+        horizontalalignment='center',
+        verticalalignment='bottom',
+        transform=ax.transAxes,
+        size=30)
+
+        ax.text(0.1, 1, 'messages sent by \n the parent fork choice:',
+        horizontalalignment='center',
+        verticalalignment='top',
+        transform=ax.transAxes,
+        size=20)
+
+        ax.text(0.1, 0.95, len(fork_choice[0].sent_log.log[1]),
+        horizontalalignment='center',
+        verticalalignment='top',
+        transform=ax.transAxes,
+        size=30)
         plt.axis('off')
         plt.draw()
         plt.pause(PAUSE_LENGTH)

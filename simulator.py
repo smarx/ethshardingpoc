@@ -196,6 +196,8 @@ for i in range(NUM_ROUNDS):
                     ShardMessagesOriginGraph.add_node(m2)
                     xoffset = rand.choice([rand.uniform(-0.5, -0.4), rand.uniform(0.4, 0.5)])
                     yoffset = rand.choice([rand.uniform(-0.5, -0.4), rand.uniform(0.4, 0.5)])
+                    xoffset = 0
+                    yoffset = -0.33
                     shard_messagesPos[m2] = (m.height + xoffset,  SHARD_SPACING_CONSTANT*(1 - m.estimate.shard_ID) + 1.5 + 7 - m.sender + yoffset)
                     ShardMessagesOriginGraph.add_edge(m, m2)
 

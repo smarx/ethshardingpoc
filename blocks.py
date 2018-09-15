@@ -1,6 +1,7 @@
 from genesis_state import genesis_state
 
 from config import SHARD_IDS
+from config import VALIDITY_CHECKS_OFF
 import random as rand
 
 
@@ -170,7 +171,10 @@ class Block:
         for ID in SHARD_IDS:
             new = []
             num_received = len(self.received_log.log[ID])
-            prev_num_received = len(self.prevblock.received_log.log[ID])
+            if self.prevblock is not None:
+                prev_num_received = len(self.prevblock.received_log.log[ID])
+            else:
+                prev_num_received = 0
             num_new_received = num_received - prev_num_received
             assert num_new_received >= 0, "expected growing received log"
             for i in range(num_new_received):
@@ -181,6 +185,9 @@ class Block:
 
     # GOAL: MAKE THIS CONSTANT TIME
     def is_valid(self):
+        if VALIDITY_CHECKS_OFF:
+            print("Warning: Validity checks off")
+            return True, "VALIDITY_CHECKS_OFF"
 
         '''
         Type checking each value of the block tuple:

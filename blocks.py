@@ -3,7 +3,7 @@ from genesis_state import genesis_state
 from config import SHARD_IDS
 import random as rand
 
-# [DONE] Maurelian: please give message data format (for txs)
+
 class MessagePayload:
     ''' has properties necessary to create tx on the new shard '''
     def __init__(self, fromAddress, toAddress, value, data):#, nonce, gasPrice, gasLimit):
@@ -20,6 +20,7 @@ class MessagePayload:
 class Message:
     def __init__(self, base, TTL, message_payload):
         assert isinstance(base, Block)
+        assert base.is_valid(), "expected block to be valid"
         self.base = base
         assert isinstance(TTL, int), "expected integer time-to-live"
         self.TTL = TTL
@@ -77,8 +78,6 @@ class ReceivedLog:
             self.add_received_message(shard_IDs[i], messages[i])
         return self
 
-# Maurelian: please replace VM_state = None as default for genesis blocks to some initial VM state (balances)
-    #  hmmmm... is that necessary?  I can't compile bc I don't have web3, so not for now!
 class Block:
     def __init__(self, ID, prevblock=None, txn_log=[], sent_log=None, received_log=None, vm_state=genesis_state):
         if sent_log is None:
@@ -101,6 +100,35 @@ class Block:
             self.height = self.prevblock.height + 1
 
         check = self.is_valid()
+        if not check[0]:
+            print("---------------------------------------------------------")
+            print("---------------------------------------------------------")
+            print("shard_ID", self.prevblock.shard_ID)
+            print("---------------------------------------------------------")
+            print("---------------------------------------------------------")
+            print("txn_log", self.prevblock.txn_log)
+            print("---------------------------------------------------------")
+            print("---------------------------------------------------------")
+            print("self.sent_log.log", self.prevblock.sent_log.log)
+            print("---------------------------------------------------------")
+            print("---------------------------------------------------------")
+            print("self.received_log.log", self.prevblock.received_log.log)
+            print("---------------------------------------------------------")
+            print("---------------------------------------------------------")
+            print("---------------------------------------------------------")
+            print("---------------------------------------------------------")
+            print("shard_ID", self.shard_ID)
+            print("---------------------------------------------------------")
+            print("---------------------------------------------------------")
+            print("txn_log", self.txn_log)
+            print("---------------------------------------------------------")
+            print("---------------------------------------------------------")
+            print("self.sent_log.log", self.sent_log.log)
+            print("---------------------------------------------------------")
+            print("---------------------------------------------------------")
+            print("self.received_log.log", self.received_log.log)
+            print("---------------------------------------------------------")
+            print("---------------------------------------------------------")
         assert check[0], check[1]
 
     def __eq__(self, block):
@@ -111,6 +139,7 @@ class Block:
 
     def is_in_chain(self, block):
         assert isinstance(block, Block), "expected block"
+        assert block.is_valid(), "expected block to be valid"
         if self == block:
             return True
 
@@ -119,28 +148,15 @@ class Block:
 
         return self.prevblock.is_in_chain(block)
 
-    def in_prev_n(self, block, n):
-        assert isinstance(n, int), "expected integer"
-        assert n >= -1, "expected n at least -1"
-        assert isinstance(block, Block)
-
-        if n == -1:
-            return False
-
-        if self == block:
-            return True
-
-        if self.prevblock is None:
-            return False
-
-        return self.prevblock.in_prev_n(block, n-1)
-
     def newly_sent(self):
         new_sent = dict.fromkeys(SHARD_IDS)
         for ID in SHARD_IDS:
             new = []
             num_sent = len(self.sent_log.log[ID])
-            prev_num_sent = len(self.prevblock.sent_log.log[ID])
+            if self.prevblock is not None:
+                prev_num_sent = len(self.prevblock.sent_log.log[ID])
+            else:
+                prev_num_sent = 0
             num_new_sent = num_sent - prev_num_sent
             assert num_new_sent >= 0, "expected growing sent log"
             for i in range(num_new_sent):
@@ -163,6 +179,7 @@ class Block:
 
         return new_received
 
+    # GOAL: MAKE THIS CONSTANT TIME
     def is_valid(self):
 
         '''
@@ -173,8 +190,6 @@ class Block:
         if self.prevblock is not None:
             if not isinstance(self.prevblock, Block):
                 return False, "expected prevblock to be a block"
-        # if not isinstance(self.data, BlockData):
-        #    return False, "expected block data"
         if not isinstance(self.sent_log, SentLog):
             return False, "expected sent log"
         if not isinstance(self.received_log, ReceivedLog):
@@ -189,7 +204,6 @@ class Block:
         '''
         Type check consistency conditions between the values of the block
         '''
-
 
         # check that the prev block is on the same shard as this block
         if self.shard_ID != self.prevblock.shard_ID:
@@ -227,30 +241,30 @@ class Block:
             prev_num_txs = len(self.prevblock.txn_log)
             new_num_txs = len(self.txn_log)
             if new_num_txs < prev_num_txs:
-                return False, "expected current txn log to be an extension of the previous"
+                return False, "expected current txn log to be an extension of the previous -- error 1"
             for i in range(prev_num_txs):
                 if self.txn_log == []:
-                    return False, "expected current txn log to be an extension of the previous"
+                    return False, "expected current txn log to be an extension of the previous -- error 2"
                 if self.prevblock.txn_log[i] != self.txn_log[i]:
-                    return False, "expected current txn log to be an extension of the previous"
+                    return False, "expected current txn log to be an extension of the previous -- error 3"
 
             # previous sent log is a prefix of current sent log
             prev_num_sent = len(self.prevblock.sent_log.log[ID])
             new_num_sent = len(self.sent_log.log[ID])
             if new_num_sent < prev_num_sent:
-                return False, "expected current sent log to be an extension of the previous"
+                return False, "expected current sent log to be an extension of the previous -- error 1"
             for i in range(prev_num_sent):
                 if self.prevblock.sent_log.log[ID][i] != self.sent_log.log[ID][i]:
-                    return False, "expected current sent log to be an extension of the previous"
+                    return False, "expected current sent log to be an extension of the previous -- error 2"
 
             # previous received log is a prefix of current received log
             prev_num_received = len(self.prevblock.received_log.log[ID])
             new_num_received = len(self.received_log.log[ID])
             if new_num_received < prev_num_received:
-                return False,  "expected current received log to be an extension of the previous"
+                return False,  "expected current received log to be an extension of the previous -- error 1"
             for i in range(prev_num_received):
                 if self.prevblock.received_log.log[ID][i] != self.received_log.log[ID][i]:
-                    return False, "expected current received log to be an extension of the previous"
+                    return False, "expected current received log to be an extension of the previous -- error 2"
 
             # bases of sent messages are monotonic
             if len(self.prevblock.sent_log.log[ID]) > 0:
@@ -266,7 +280,7 @@ class Block:
                         m2 = message
 
                     if not m2.base.is_in_chain(m1.base):
-                        return False, "expected bases to be monotonic"
+                        return False, "expected bases to be monotonic -- error 1"
 
             # bases of received messages are monotonic
             if len(self.prevblock.received_log.log[ID]) > 0:
@@ -281,8 +295,9 @@ class Block:
                         m1 = m2
                         m2 = message
 
+
                     if not m2.base.is_in_chain(m1.base):
-                        return False, "expected bases to be monotonic"
+                        return False, "expected bases to be monotonic -- error 2"
 
                 # sources are montonic
                 if self.received_log.sources[ID] is not None:
@@ -295,15 +310,15 @@ class Block:
                     source = self.received_log.sources[ID]
                     base = last_old_sent_message.base
                     if not source.is_in_chain(base):
-                        return False, "expected bases to be in the chaing of sources"
+                        return False, "expected bases to be in the chaing of sources -- error 1"
 
                 if len(new_sent_messages[ID]) > 0:
                     base = new_sent_messages[ID][-1].base
                     if not source.is_in_chain(base):
-                        return False, "expected bases to be in the chain of sources"
+                        return False, "expected bases to be in the chain of sources -- error 2"
 
             '''
-            Conditions one message receipt
+            Conditions on message receipt
             '''
             if self.received_log.sources[ID] is not None:
 
@@ -313,31 +328,38 @@ class Block:
                     if self.received_log.log[ID][i] != self.received_log.sources[ID].sent_log.log[self.shard_ID][i]:
                         return False, "expected the received messages were sent by source"
 
-                # newly received messages are received by the TTL
+                # newly received messages are received by the TTL of the base
                 for message in new_received_messages[ID]:
-                    if not self.in_prev_n(message.base, message.TTL):
+                    if not self.is_in_chain(message.base):
+                        return False, "expected only to receive messages with base in chain"
+                    # Message on received this block are expired if...
+                    if message.base.height + message.TTL < self.height:
                         return False, "message not received within TTL of its base"
 
                 # their sent messages are received by the TTL as seen from our sources
                 source = self.received_log.sources[ID]
                 for m in source.sent_log.log[self.shard_ID]:  # inefficient
-                    print("m.base.height + m.TTL", m.base.height + m.TTL)
-                    if m.base.height + m.TTL < self.height:
-                        if m not in self.received_log.log[ID]:
-                            return False, "expected all expired messages in source to be recieved"
+                    if m in self.received_log.log[ID]:
+                        continue
+                    # a message incoming (but not yet received) to this shard is expired if...
+                    if m.base.height + m.TTL <= self.height:
+                        return False, "expected all expired messages in source to be recieved"
 
                 # our sent messages are received by the TTL as seen from our sources
                 for m in self.sent_log.log[ID]:  # inefficient
-                    print("m.base.height + m.TTL", m.base.height + m.TTL)
-                    if m.base.height + m.TTL < source.height:
-                        if m not in source.received_log.log[ID]:
-                            return False, "expected all expired sent messages to be received by source"
+                    if m in source.received_log.log[self.shard_ID]:
+                        continue
+                    # a message outgoing from this shard that hasn't been received is expired if...
+                    if m.base.height + m.TTL <= source.height:
+                        return False, "expected all expired sent messages to be received by source"
 
                 # our sent messages are received by the TTL as seen from our bases
                 for m1 in self.sent_log.log[ID]:  # super inefficient
                     for m2 in self.sent_log.log[ID]:
-                        if m1.base.height + m1.TTL < m2.base.height:
-                            if m1 not in m2.base.received_log.log[self.shard_ID]:
+                        if m1 in m2.base.received_log.log[self.shard_ID]:
+                            continue
+                        # m1 from this shard that hasn't been received by m2.base, and is expired if...
+                        if m1.base.height + m1.TTL <= m2.base.height:
                                 return False, "expected sent messages to be received by the TTL"
 
         return True, "Valid block"

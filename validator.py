@@ -22,6 +22,8 @@ class ConsensusMessage:
         self.justification = justification
 
         assert isinstance(self.estimate, Block), "expected block"
+        assert self.estimate.is_valid(), "expected block to be valid"
+
         assert self.sender in VALIDATOR_NAMES
 
         self.height = 0
@@ -101,8 +103,6 @@ class Validator:
         new_txn_log = copy.copy(prev_txn_log)
         data = []
         num_prev_txs = len(prev_txn_log)
-        print("num_prev_txs",num_prev_txs)
-        print("mempools[shard_ID] == prev_txn_log", mempools[shard_ID] == prev_txn_log)
         for i in range(drain_amount):
             if num_prev_txs + i < len(mempools[shard_ID]):
                 new_tx = mempools[shard_ID][num_prev_txs + i]
@@ -125,12 +125,6 @@ class Validator:
 
             previous_received_log_size = len(prevblock.received_log.log[ID])
             current_received_log_size = len(received_log.log[ID])
-            assert current_received_log_size >= previous_received_log_size, "did not expect log size to shrink"
-
-            if current_received_log_size > previous_received_log_size:
-                print("RECEIVED LOG IS GROWING!!")
-
-
             newly_received_messages[ID] = received_log.log[ID][previous_received_log_size:]
 
         # which have the following newly received payloads:
@@ -145,7 +139,7 @@ class Validator:
 
         # this is where we have this function that produces the new vm state and the new outgoing payloads
         # new_vm_state, new_outgoing_payloads = INTEGRATE_HERE(prevblock.vm_state, data, newly_received_payloads)
-        
+
         old_state = copy.copy(prevblock.vm_state)
 
         # TEST
@@ -153,28 +147,22 @@ class Validator:
 
         new_vm_state, new_outgoing_payloads = apply_to_state(prevblock.vm_state, data, newly_received_payloads)
 
-        print("new_outgoing_payloads", new_outgoing_payloads)
-        #if data != []:
-        #    print("data", data)
-        # print("--------------------------------------------------------------------")
         for ID in SHARD_IDS:
             if new_outgoing_payloads.log[ID] != []:
                 print("NEW OUTGOING PAYLOADS[",ID,"]", new_outgoing_payloads.log[ID])
-
-        # print("--------------------------------------------------------------------")
-        # print("new_vm_state", new_vm_state)
-        # print("old_state == new_vm_state", old_state == new_vm_state)
-        if old_state != new_vm_state:
-            print("data:", data)
-        # print("\n\n\n\n")
 
         # we now package the sent_log with new messages that deliver these payloads
         new_sent_messages = SentLog()
         for ID in SHARD_IDS:
             if ID != shard_ID:
                 for m in new_outgoing_payloads.log[ID]:
-                    print("NEW OUTGOING PAYLOAD", m)
-                    new_sent_messages.log[ID].append(Message(fork_choice[ID], TTL, m.message_payload))
+                    # if TTL == 0, then we'll make an invalid block
+                    # one that sends a message that must be included by the base
+                    # which already exists and therefore cannot include this message
+                    if TTL > 0:
+                        new_sent_messages.log[ID].append(Message(fork_choice[ID], TTL, m.message_payload))
+                    else:
+                        print("Warning: Not sending message because TTL == 0")
 
         sent_log = prevblock.sent_log.append_SentLog(new_sent_messages)
 

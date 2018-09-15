@@ -124,6 +124,9 @@ for i in range(NUM_ROUNDS):
                         pass
 
     # DRAW VISUALIZATION:
+    print("Step: ", i)
+    if not REPORTING:
+        continue
     if (i + 1) % REPORT_INTERVAL == 0:
         plt.clf()
         fork_choice = watcher.fork_choice()

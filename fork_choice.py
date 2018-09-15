@@ -58,6 +58,8 @@ def sharded_fork_choice(starting_blocks, blocks, weighted_blocks):
     root_shard_ID = 0
     root_shard_fork_choice = fork_choice(starting_blocks[root_shard_ID], blocks, weighted_blocks)
 
+    child_ID = 1
+
     block_filter = []
     for b in blocks:
 
@@ -65,20 +67,42 @@ def sharded_fork_choice(starting_blocks, blocks, weighted_blocks):
         if b.shard_ID == root_shard_ID:
             continue
 
-        # in the fork choice of the parent
-        # is there a sent from the root that is expired in b but not received by b?
-        for m in root_shard_fork_choice.sent_log.log[b.shard_ID]:
-            if m not in b.received_log.log[root_shard_ID]:
-                if b.height >= m.base.height + m.TTL:
+        # FILTER BLOCKS THAT DONT AGREE WITH MOST RECENT SOURCE
+        if root_shard_fork_choice.received_log.sources[child_ID] is not None:
+            if not root_shard_fork_choice.received_log.sources[child_ID].is_in_chain(b):
+                if not b.is_in_chain(root_shard_fork_choice.received_log.sources[child_ID]):
+                    block_filter.append(b)
+
+        # FILTER BLOCKS WITH ORPHANED SOURCES
+        if b.received_log.sources[root_shard_ID] is not None:
+            if not root_shard_fork_choice.is_in_chain(b.received_log.sources[root_shard_ID]):
+                block_filter.append(b)
+                continue
+
+        # FILTER BLOCKS WITH ORPHANED BASES
+        if b.sent_log.log[root_shard_ID] != []:
+            for m in b.newly_sent()[root_shard_ID]:
+                if not root_shard_fork_choice.is_in_chain(m.base):
                     block_filter.append(b)
                     continue
 
-        # is there a sent from the child that is expired in the root but not received by the root?
-        for m in b.sent_log.log[root_shard_ID]:
-            if m not in root_shard_fork_choice.received_log.log[b.shard_ID]:
-                if root_shard_fork_choice.height >= m.base.height + m.TTL:
+
+        # FILTER BLOCKS THAT FAIL TO RECEIVE MESSAGES FROM PARENT ON TIME
+        for m in root_shard_fork_choice.sent_log.log[b.shard_ID]:
+            if m not in b.received_log.log[root_shard_ID]:
+                if b.height >= m.base.height + m.TTL:  # EXPIRY CONDITION
                     block_filter.append(b)
                     continue
+
+        # FILTER BLOCKS THAT SEND MESSAGES THAT WERE NOT RECEIVED IN TIME
+        for m in b.sent_log.log[root_shard_ID]:
+            if m not in root_shard_fork_choice.received_log.log[b.shard_ID]:
+                if root_shard_fork_choice.height >= m.base.height + m.TTL:   # EXPIRY CONDITION
+                    block_filter.append(b)
+                    continue
+
+
+
         '''
         # if they conflict with the most recent source of the root
         if root_shard_fork_choice.received_log.sources[b.shard_ID] is not None:
@@ -92,13 +116,13 @@ def sharded_fork_choice(starting_blocks, blocks, weighted_blocks):
                 block_filter.append(b)
         '''
 
-    left_child_ID = 1
-    left_child_fork_choice = fork_choice(starting_blocks[left_child_ID], blocks, weighted_blocks, block_filter)
+    child_fork_choice = fork_choice(starting_blocks[child_ID], blocks, weighted_blocks, block_filter)
 
+    '''
     right_child_ID = 2
     right_child_fork_choice = fork_choice(starting_blocks[right_child_ID], blocks, weighted_blocks, block_filter)
-
-    return { root_shard_ID : root_shard_fork_choice, left_child_ID : left_child_fork_choice, right_child_ID : right_child_fork_choice}
+    '''
+    return {root_shard_ID: root_shard_fork_choice, child_ID: child_fork_choice}
 
 
 def test():

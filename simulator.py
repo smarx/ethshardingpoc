@@ -33,12 +33,6 @@ for v in VALIDATOR_NAMES:
     for genesis_message in GENESIS_MESSAGES:
         validators[v].receive_consensus_message(genesis_message)
 
-shard_assignment = {}
-for ID in SHARD_IDS:
-    shard_assignment[ID] = []  # Keeps track of to which shards the validators are assigned
-    for i in range(3):
-        shard_assignment[ID].append(3*ID + i + 1)
-
 # GLOBAL MEMPOOLS
 mempools = {}
 txs = gen_alice_and_bob_tx()
@@ -56,10 +50,11 @@ for v in VALIDATOR_NAMES:
 for i in range(NUM_ROUNDS):
     # Make a new message from a random validator on a random shard
     rand_ID = random.choice(SHARD_IDS)
-    next_proposer = 3*rand_ID + random.randint(1, 3)
+    next_proposer = rand.choice(SHARD_VALIDATOR_ASSIGNMENT[rand_ID])
 
     if next_proposer == 0:
-        assert False, "watcher should never propose"
+        i -= 1  # skip but don't waste the round!
+        continue
 
     # MAKE CONSENSUS MESSAGE
     new_message = validators[next_proposer].make_new_consensus_message(rand_ID, mempools, drain_amount=MEMPOOL_DRAIN_RATE)
@@ -79,9 +74,9 @@ for i in range(NUM_ROUNDS):
         # RECEIVE CONSENSUS MESSAGES WITHIN SHARD
         for j in range(NUM_WITHIN_SHARD_RECEIPTS_PER_ROUND):
 
-            next_receiver = random.choice(shard_assignment[rand_ID])
+            next_receiver = random.choice(SHARD_VALIDATOR_ASSIGNMENT[rand_ID])
 
-            pool = copy.copy(shard_assignment[rand_ID])
+            pool = copy.copy(SHARD_VALIDATOR_ASSIGNMENT[rand_ID])
             pool.remove(next_receiver)
 
             new_received = False
@@ -128,9 +123,29 @@ for i in range(NUM_ROUNDS):
     if not REPORTING:
         continue
     if (i + 1) % REPORT_INTERVAL == 0:
+
+        #get max_height (coud be more efficient)
+        max_height = 0
+        for m in watcher.consensus_messages:
+            if m.height > max_height:
+                max_height = m.height
+
         plt.clf()
         fork_choice = watcher.fork_choice()
         SHARD_SPACING_CONSTANT = 3
+
+        ValidatorDashes = nx.Graph();
+        EndpointsPos = {}
+        for v in VALIDATOR_NAMES:
+            ValidatorDashes.add_node((v, 1))
+            ValidatorDashes.add_node((v, 2))
+            ValidatorDashes.add_edge((v, 1), (v, 2))
+            EndpointsPos[(v, 1)] = (0,          SHARD_SPACING_CONSTANT*(1 - VALIDATOR_SHARD_ASSIGNMENT[v]) + NUM_VALIDATORS - v)
+            EndpointsPos[(v, 2)] = (max_height, SHARD_SPACING_CONSTANT*(1 - VALIDATOR_SHARD_ASSIGNMENT[v]) + NUM_VALIDATORS - v)
+        nx.draw_networkx_nodes(ValidatorDashes, EndpointsPos, node_size=0)
+        nx.draw_networkx_edges(ValidatorDashes, EndpointsPos, edge_color='#cccccc', style='dashed', width=0.5)
+
+
 
         PrevblockGraph = nx.DiGraph();
         ForkChoiceGraph = nx.DiGraph();
@@ -148,10 +163,10 @@ for i in range(NUM_ROUNDS):
             SourcesGraph.add_node(m)
 
             # get positions:
-            if m.sender != 0:
-                messagesPos[m] = (m.height, SHARD_SPACING_CONSTANT*(1 - m.estimate.shard_ID) + 1.5 + 7 - m.sender)
-            else:  # genesis blocks
-                messagesPos[m] = (m.height - 1, SHARD_SPACING_CONSTANT*(1 - m.estimate.shard_ID) + 1.5 + 5 - 3*m.estimate.shard_ID)
+            if m.sender != 0:               
+                messagesPos[m] = (m.height, SHARD_SPACING_CONSTANT*(1 - m.estimate.shard_ID) + NUM_VALIDATORS - m.sender)
+            else:  # genesis blocks            
+                messagesPos[m] = (m.height - 1, SHARD_SPACING_CONSTANT*(1 - m.estimate.shard_ID) + NUM_VALIDATORS/2 - m.estimate.shard_ID)
 
             # this map will help us draw nodes from prevblocks, sources, etc
             block_to_message[m.estimate] = m
@@ -187,7 +202,7 @@ for i in range(NUM_ROUNDS):
         for m in messages:
             ShardMessagesOriginGraph.add_node(m)
 
-            shard_messagesPos[m] = (m.height,  SHARD_SPACING_CONSTANT*(1 - m.estimate.shard_ID) + 1.5 + 7 - m.sender)
+            shard_messagesPos[m] = (m.height, SHARD_SPACING_CONSTANT*(1 - m.estimate.shard_ID) + NUM_VALIDATORS - m.sender)
 
             for ID in SHARD_IDS:
                 for m2 in m.estimate.newly_sent()[ID]:
@@ -198,9 +213,8 @@ for i in range(NUM_ROUNDS):
                     yoffset = rand.choice([rand.uniform(-0.5, -0.4), rand.uniform(0.4, 0.5)])
                     xoffset = 0
                     yoffset = -0.33
-                    shard_messagesPos[m2] = (m.height + xoffset,  SHARD_SPACING_CONSTANT*(1 - m.estimate.shard_ID) + 1.5 + 7 - m.sender + yoffset)
+                    shard_messagesPos[m2] = (m.height + xoffset, SHARD_SPACING_CONSTANT*(1 - m.estimate.shard_ID) + NUM_VALIDATORS - m.sender + yoffset)
                     ShardMessagesOriginGraph.add_edge(m, m2)
-
 
         nx.draw_networkx_nodes(ShardMessagesOriginGraph, shard_messagesPos, node_size=0)
         nx.draw_networkx_nodes(ShardMessagesGraph, shard_messagesPos, node_shape='o', node_color='#f6546a', node_size=250)
@@ -267,4 +281,6 @@ for i in range(NUM_ROUNDS):
         plt.pause(PAUSE_LENGTH)
 
 # Leave plot open after going over all proposals
-plt.show(block=True)
+mng = plt.get_current_fig_manager()
+mng.window.showMaximized()
+plt.show()

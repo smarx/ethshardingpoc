@@ -1,6 +1,6 @@
 import json
 from web3 import Web3
-from config import NUM_GEN_ALICE_BOB
+from config import NUM_TRANSACTIONS
 
 web3 = Web3()
 
@@ -72,7 +72,7 @@ def gen_payloads():
 
 def gen_alice_and_bob_tx():
     tx = []
-    for x in range(0, NUM_GEN_ALICE_BOB):
+    for x in range(0, NUM_TRANSACTIONS):
         # tx.append(gen_in_shard_tx(hex(x)))
         tx.append(gen_cross_shard_tx(x))
     # print(tx[0])

@@ -1,16 +1,28 @@
 import json
 from web3 import Web3
 from config import NUM_TRANSACTIONS
+from config import DEADBEEF
 
 web3 = Web3()
 
+alice_key = '0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318'
+alice_address = web3.eth.account.privateKeyToAccount(alice_key).address.lower()[2:]
+
+abi = json.loads('[{"constant":false,"inputs":[{"name":"_shard_ID","type":"uint256"},{"name":"_sendGas","type":"uint256"},{"name":"_sendToAddress","type":"address"},{"name":"_data","type":"bytes"}],"name":"send","outputs":[],"payable":true,"stateMutability":"payable","type":"function"},{"anonymous":false,"inputs":[{"indexed":true,"name":"shard_ID","type":"uint256"},{"indexed":false,"name":"sendGas","type":"uint256"},{"indexed":false,"name":"sendFromAddress","type":"address"},{"indexed":true,"name":"sendToAddress","type":"address"},{"indexed":false,"name":"value","type":"uint256"},{"indexed":false,"name":"data","type":"bytes"},{"indexed":true,"name":"base","type":"uint256"},{"indexed":false,"name":"TTL","type":"uint256"}],"name":"SentMessage","type":"event"}]')
+contract = web3.eth.contract(address='0x000000000000000000000000000000000000002A', abi=abi)
+
 
 def format_transaction(tx, signed):
+    if isinstance(tx["data"], bytes):
+        data = tx["data"].hex()
+    else:
+        data = tx["data"]
+
     return {
         "gas": hex(tx["gas"]),
         "gasPrice": tx["gasPrice"],
         "hash": signed["hash"].hex(),
-        "input": tx["data"],
+        "input": data,
         "nonce": tx["nonce"],
         "r": hex(signed["r"]),
         "s": hex(signed["s"]),
@@ -22,18 +34,14 @@ def format_transaction(tx, signed):
 
 # Alice sends cross shard transactions
 def gen_cross_shard_tx(nonce):
-    private_key_alice = '0x4c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318'
-    address_alice = web3.eth.account.privateKeyToAccount(private_key_alice).address.lower()[2:]
+    cross_shard_tx = contract.functions.send(1, 300000, DEADBEEF, bytes(0)).buildTransaction({ "gas": 3000000, "gasPrice": "0x2", "nonce": hex(nonce), "value": 1})
 
-    abi = json.loads('[{"constant":false,"inputs":[{"name":"_shard_ID","type":"uint256"},{"name":"_sendGas","type":"uint256"},{"name":"_sendToAddress","type":"address"},{"name":"_data","type":"bytes"}],"name":"send","outputs":[],"payable":true,"stateMutability":"payable","type":"function"},{"anonymous":false,"inputs":[{"indexed":true,"name":"shard_ID","type":"uint256"},{"indexed":false,"name":"sendGas","type":"uint256"},{"indexed":false,"name":"sendFromAddress","type":"address"},{"indexed":true,"name":"sendToAddress","type":"address"},{"indexed":false,"name":"value","type":"uint256"},{"indexed":false,"name":"data","type":"bytes"},{"indexed":true,"name":"base","type":"uint256"},{"indexed":false,"name":"TTL","type":"uint256"}],"name":"SentMessage","type":"event"}]')
-    contract = web3.eth.contract(address='0x000000000000000000000000000000000000002A', abi=abi)
-    cross_shard_tx = contract.functions.send(1, 300000, '0xDeaDbeefdEAdbeefdEadbEEFdeadbeEFdEaDbeeF', '0x1234').buildTransaction({ "gas": 3000000, "gasPrice": "0x2", "nonce": hex(nonce), "value": 5 })
-
-    cross_shard_tx_signed = web3.eth.account.signTransaction(cross_shard_tx, private_key_alice)
+    cross_shard_tx_signed = web3.eth.account.signTransaction(cross_shard_tx, alice_key)
     cross_shard_tx_formatted = format_transaction(cross_shard_tx, cross_shard_tx_signed)
     return cross_shard_tx_formatted
 
 
+'''
 # Bob sends simple transfers between account in the same shard
 def gen_in_shard_tx(nonce):
     private_key_bob = '0x5c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318'
@@ -69,6 +77,7 @@ def gen_payloads():
         tx.append(payloadA)
     return tx
 
+'''
 
 def gen_alice_and_bob_tx():
     tx = []

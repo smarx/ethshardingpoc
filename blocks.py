@@ -3,6 +3,7 @@ from genesis_state import genesis_state
 from config import SHARD_IDS
 from config import VALIDITY_CHECKS_OFF
 from config import VALIDITY_CHECKS_WARNING_OFF
+from config import DEADBEEF
 import random as rand
 
 
@@ -10,7 +11,7 @@ class MessagePayload:
     ''' has properties necessary to create tx on the new shard '''
     def __init__(self, fromAddress, toAddress, value, data):#, nonce, gasPrice, gasLimit):
         self.fromAddress = fromAddress
-        self.toAddress = toAddress
+        self.toAddress = DEADBEEF  # Using "toAddress here leads to an error, apparently not an address"
         self.value = value
         self.data = data
         # the special transaction pusher address will have these values hard coded
@@ -20,14 +21,14 @@ class MessagePayload:
 
 
 class Message:
-    def __init__(self, base, TTL, message_payload):
+    def __init__(self, base, TTL, payload):
         assert isinstance(base, Block)
         assert base.is_valid(), "expected block to be valid"
         self.base = base
         assert isinstance(TTL, int), "expected integer time-to-live"
         self.TTL = TTL
-        assert isinstance(message_payload, MessagePayload), "expected messagepayload format"
-        self.message_payload = message_payload
+        assert isinstance(payload, MessagePayload), "expected messagepayload format"
+        self.payload = payload
 
 
 class SentLog:

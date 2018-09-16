@@ -1,4 +1,5 @@
 import random as rand
+from web3 import Web3
 
 SHARD_IDS = [0, 1]
 NUM_VALIDATORS = 10
@@ -38,3 +39,5 @@ FREE_INSTANT_BROADCAST = False
 # Validity check options
 VALIDITY_CHECKS_WARNING_OFF = True
 VALIDITY_CHECKS_OFF = True
+
+DEADBEEF = Web3.toChecksumAddress(hex(1271270613000041655817448348132275889066893754095))

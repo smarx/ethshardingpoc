@@ -1,9 +1,11 @@
 from web3 import Web3
+from config import DEADBEEF
 
 web3 = Web3()
 
 # same "pusher" address on each shard
-address = web3.eth.account.privateKeyToAccount('0x6c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318').address.lower()[2:]
+pusher_key = '0x6c0883a69102937d6231471b5dbb6204fe5129617082792ae468d01a3f362318'
+pusher_address = web3.eth.account.privateKeyToAccount(pusher_key).address.lower()[2:]
 
 # just gonna reuse this initial state on each shard.
 genesis_state = {
@@ -16,8 +18,14 @@ genesis_state = {
       "previousHash": "dac58aa524e50956d0c0bae7f3f8bb9d35381365d07804dd5b48a5a297c06af4"
     },
     "pre": {
-      address: {
+      pusher_address: {
         "balance": "0x5ffd4878be161d74",
+        "code": "0x",
+        "nonce": "0x0",
+        "storage": {}
+      },
+      DEADBEEF[2:].lower(): {
+        "balance": "0x1",
         "code": "0x",
         "nonce": "0x0",
         "storage": {}

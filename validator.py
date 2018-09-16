@@ -151,10 +151,6 @@ class Validator:
         # this is where we have this function that produces the new vm state and the new outgoing payloads
         # new_vm_state, new_outgoing_payloads = apply_to_state(prevblock.vm_state, data, newly_received_payloads)
 
-        # NOTE: we aren't executing the received logs because the EVM throws errors on them
-        # But at least we are receiving them in our blocks, with our fork choice rule
-        newly_received_payloads = ReceivedLog()
-
         new_vm_state, new_outgoing_payloads = apply_to_state(prevblock.vm_state, data, newly_received_payloads)
 
         if shard_ID == 1:
@@ -171,7 +167,7 @@ class Validator:
                     # one that sends a message that must be included by the base
                     # which already exists and therefore cannot include this message
                     if TTL > 0:
-                        new_sent_messages.log[ID].append(Message(fork_choice[ID], TTL, m.message_payload))
+                        new_sent_messages.log[ID].append(Message(fork_choice[ID], TTL, m.payload))
                     else:
                         print("Warning: Not sending message because TTL == 0")
 

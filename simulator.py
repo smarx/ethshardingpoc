@@ -46,6 +46,8 @@ for v in VALIDATOR_NAMES:
     for w in VALIDATOR_NAMES:
         viewables[v][w] = []
 
+max_height = 0
+
 # SIMULATION LOOP:
 for i in range(NUM_ROUNDS):
     # Make a new message from a random validator on a random shard
@@ -58,6 +60,10 @@ for i in range(NUM_ROUNDS):
 
     # MAKE CONSENSUS MESSAGE
     new_message = validators[next_proposer].make_new_consensus_message(rand_ID, mempools, drain_amount=MEMPOOL_DRAIN_RATE)
+
+    # keep max_height
+    if new_message.height > max_height:
+        max_height = new_message.height
 
     watcher.receive_consensus_message(new_message)  # here the watcher is, receiving all the messages
 
@@ -118,18 +124,13 @@ for i in range(NUM_ROUNDS):
                     except UnresolvedDeps:
                         pass
 
-    # DRAW VISUALIZATION:
+    # REPORTING:
     print("Step: ", i)
     if not REPORTING:
         continue
     if (i + 1) % REPORT_INTERVAL == 0:
 
-        #get max_height (coud be more efficient)
-        max_height = 0
-        for m in watcher.consensus_messages:
-            if m.height > max_height:
-                max_height = m.height
-
+        # VISUALIZATION
         plt.clf()
         fork_choice = watcher.fork_choice()
         SHARD_SPACING_CONSTANT = 3
@@ -146,8 +147,6 @@ for i in range(NUM_ROUNDS):
             EndpointsPos[(v, 2)] = (max_height, SHARD_SPACING_CONSTANT*(1 - VALIDATOR_SHARD_ASSIGNMENT[v]) + NUM_VALIDATORS - v)
         nx.draw_networkx_nodes(ValidatorDashes, EndpointsPos, node_size=0)
         nx.draw_networkx_edges(ValidatorDashes, EndpointsPos, style='dashed', width=0.5)
-
-
 
         PrevblockGraph = nx.DiGraph();
         ForkChoiceGraph = nx.DiGraph();
@@ -214,7 +213,7 @@ for i in range(NUM_ROUNDS):
                     xoffset = rand.choice([rand.uniform(-0.5, -0.4), rand.uniform(0.4, 0.5)])
                     yoffset = rand.choice([rand.uniform(-0.5, -0.4), rand.uniform(0.4, 0.5)])
                     xoffset = 0
-                    yoffset = -0.33
+                    yoffset = -0.33 + 0.66*m.estimate.shard_ID
                     shard_messagesPos[m2] = (m.height + xoffset, SHARD_SPACING_CONSTANT*(1 - m.estimate.shard_ID) + NUM_VALIDATORS - m.sender + yoffset)
                     ShardMessagesOriginGraph.add_edge(m, m2)
 
@@ -236,11 +235,12 @@ for i in range(NUM_ROUNDS):
                     else:
                         Orphaned_ShardMessagesDestinationGraph.add_edge(m2, m)
 
-        nx.draw_networkx_edges(Agreeing_ShardMessagesDestinationGraph, shard_messagesPos, edge_color='#600787', arrowsize=20, arrowstyle='->', width=4)
+        nx.draw_networkx_edges(Agreeing_ShardMessagesDestinationGraph, shard_messagesPos, edge_color='#600787', arrowsize=50, arrowstyle='->', width=6)
         nx.draw_networkx_edges(Orphaned_ShardMessagesDestinationGraph, shard_messagesPos, edge_color='#600787', arrowsize=20, arrowstyle='->', width=0.75)
 
         ax = plt.axes()
 
+        # FLOATING TEXT
         ax.text(0, 0.2, 'child shard',
         horizontalalignment='right',
         verticalalignment='center',
@@ -267,17 +267,69 @@ for i in range(NUM_ROUNDS):
         transform=ax.transAxes,
         size=30)
 
+        ax.text(0.25, 0, 'messages sent by \n the child fork choice:',
+        horizontalalignment='center',
+        verticalalignment='bottom',
+        transform=ax.transAxes,
+        size=20)
+
+        ax.text(0.25, -0.05, len(fork_choice[1].sent_log.log[0]),
+        horizontalalignment='center',
+        verticalalignment='bottom',
+        transform=ax.transAxes,
+        size=30)
+
         ax.text(0.1, 1, 'messages sent by \n the parent fork choice:',
         horizontalalignment='center',
-        verticalalignment='top',
+        verticalalignment='bottom',
         transform=ax.transAxes,
         size=20)
 
         ax.text(0.1, 0.95, len(fork_choice[0].sent_log.log[1]),
         horizontalalignment='center',
-        verticalalignment='top',
+        verticalalignment='bottom',
         transform=ax.transAxes,
         size=30)
+
+        ax.text(0.25, 1, 'messages received by \n the parent fork choice:',
+        horizontalalignment='center',
+        verticalalignment='bottom',
+        transform=ax.transAxes,
+        size=20)
+
+        ax.text(0.25, 0.95, len(fork_choice[0].received_log.log[1]),
+        horizontalalignment='center',
+        verticalalignment='bottom',
+        transform=ax.transAxes,
+        size=30)
+
+
+        ax.text(0.4, 0, 'deadbeef balance on \n the child fork choice:',
+        horizontalalignment='center',
+        verticalalignment='bottom',
+        transform=ax.transAxes,
+        size=20)
+
+        ax.text(0.4, -0.05, fork_choice[1].vm_state["pre"][DEADBEEF[2:].lower()]["balance"],
+        horizontalalignment='center',
+        verticalalignment='bottom',
+        transform=ax.transAxes,
+        size=30)
+
+        ax.text(0.4, 1, 'deadbeef balance on \n the parent fork choice:',
+        horizontalalignment='center',
+        verticalalignment='bottom',
+        transform=ax.transAxes,
+        size=20)
+
+        ax.text(0.4, 0.95, fork_choice[0].vm_state["pre"][DEADBEEF[2:].lower()]["balance"],
+        horizontalalignment='center',
+        verticalalignment='bottom',
+        transform=ax.transAxes,
+        size=30)
+
+
+
         plt.axis('off')
         plt.draw()
         plt.pause(PAUSE_LENGTH)

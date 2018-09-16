@@ -137,13 +137,15 @@ for i in range(NUM_ROUNDS):
         ValidatorDashes = nx.Graph();
         EndpointsPos = {}
         for v in VALIDATOR_NAMES:
+            if v == 0:
+                continue
             ValidatorDashes.add_node((v, 1))
             ValidatorDashes.add_node((v, 2))
             ValidatorDashes.add_edge((v, 1), (v, 2))
             EndpointsPos[(v, 1)] = (0,          SHARD_SPACING_CONSTANT*(1 - VALIDATOR_SHARD_ASSIGNMENT[v]) + NUM_VALIDATORS - v)
             EndpointsPos[(v, 2)] = (max_height, SHARD_SPACING_CONSTANT*(1 - VALIDATOR_SHARD_ASSIGNMENT[v]) + NUM_VALIDATORS - v)
         nx.draw_networkx_nodes(ValidatorDashes, EndpointsPos, node_size=0)
-        nx.draw_networkx_edges(ValidatorDashes, EndpointsPos, edge_color='#cccccc', style='dashed', width=0.5)
+        nx.draw_networkx_edges(ValidatorDashes, EndpointsPos, style='dashed', width=0.5)
 
 
 
@@ -189,7 +191,7 @@ for i in range(NUM_ROUNDS):
 
         # Draw edges
         nx.draw_networkx_edges(SourcesGraph, messagesPos, style='dashdot', edge_color='y', arrowsize=10, width=1)
-        nx.draw_networkx_edges(ForkChoiceGraph, messagesPos, edge_color='#66b266', width=10)
+        nx.draw_networkx_edges(ForkChoiceGraph, messagesPos, edge_color='#66b266', arrowsize=25, width=15)
         nx.draw_networkx_edges(PrevblockGraph, messagesPos, width=3)
 
         nx.draw_networkx_nodes(PrevblockGraph, messagesPos, node_shape='s', node_color='#0066cc', node_size=300)

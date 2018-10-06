@@ -200,9 +200,8 @@ def report(watcher):
     window_size_by_shard_height = {}
 
     for h in range(num_layers):
-        window_size_by_shard_height[h] = shard_display_width_by_height[h]/X_SPACE_PER_MESSAGE_HEIGHT
+        window_size_by_shard_height[h] = shard_display_width_by_height[h]/(X_SPACE_PER_MESSAGE_HEIGHT) + 4
 
-    assert window_size_by_shard_height[0] == CONSENSUS_MESSAGE_HEIGHTS_TO_DISPLAY_IN_ROOT, "!!!"
 
     max_message_display_height_by_shard = {}
     for ID in SHARD_IDS:
@@ -249,11 +248,11 @@ def report(watcher):
             start_of_window = 0
 
         used_window = max_message_display_height_by_shard[ID] - start_of_window
-        relative_height = (m.height - start_of_window)/(used_window + 1)
+        relative_height = (m.height - start_of_window - 1)/used_window
 
         # get positions:
         assert relative_height <= 1, "expected relative height to be less than 1"
-        xoffset = relative_height*(shard_display_width_by_height[shard_height] - 2*DISPLAY_MARGIN)
+        xoffset = relative_height*(shard_display_width_by_height[shard_height] - 2*DISPLAY_MARGIN) + DISPLAY_MARGIN
 
         if m.sender != 0:
             messagesPos[m] = (validator_left_x_coordinate[m.sender] + xoffset, validator_y_coordinate[m.sender])

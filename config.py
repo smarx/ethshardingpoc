@@ -2,9 +2,10 @@ import random as rand
 from web3 import Web3
 from collections import defaultdict
 
-SHARD_COUNT = 2
-SHARD_IDS = list(range(SHARD_COUNT))
+NUM_SHARDS = 3
 NUM_VALIDATORS = 10
+
+SHARD_IDS = list(range(NUM_SHARDS))
 VALIDATOR_NAMES = []
 for i in range(NUM_VALIDATORS):
     VALIDATOR_NAMES.append(i)

@@ -1,5 +1,6 @@
 from blocks import Block
 from config import SHARD_IDS
+from typing import List, Dict
 
 # Returns children of a block tht are not in the filter
 def filtered_children(block, blocks, block_filter):
@@ -39,7 +40,7 @@ def best_child(block, blocks, weighted_blocks, block_filter):
     return winning_child
 
 # Filtered GHOST: like GHOST but it ignores blocks in "block_filter"
-def fork_choice(starting_block, blocks, weighted_blocks, block_filter=[]):
+def fork_choice(starting_block, blocks, weighted_blocks, block_filter=[]) -> Block:
     assert starting_block not in block_filter, "expected starting block to not be filtered"
 
     # This loop replaces this_block with this_block's best filtered child
@@ -52,8 +53,7 @@ def fork_choice(starting_block, blocks, weighted_blocks, block_filter=[]):
     return this_block
 
 # Sharded fork choice rule returns a block for every shard
-def sharded_fork_choice(starting_blocks, blocks, weighted_blocks):
-
+def sharded_fork_choice(starting_blocks, blocks, weighted_blocks, parent_shard_fork_choice: Block, child_IDs: List[int]):
     # TYPE GUARD
     for ID in starting_blocks.keys():
         assert ID in SHARD_IDS, "expected shard IDs"
@@ -71,17 +71,10 @@ def sharded_fork_choice(starting_blocks, blocks, weighted_blocks):
         assert isinstance(b, Block), "expected block"
         assert b.is_valid(), "expected valid blocks"
         assert weighted_blocks[b] > 0, "expected positive weights"
+    
     # --------------------------------------------------------------------#
 
-
-    # one day this won't be hard coded:
-    parent_ID = SHARD_IDS[0]
-    child_IDs = SHARD_IDS[1:]
-
-
-    # THE PARENT SHARD FORK CHOICE IS INDEPENDENT OF THE CHILD SHARD
-    parent_shard_fork_choice = fork_choice(starting_blocks[parent_ID], blocks, weighted_blocks)
-    # --------------------------------------------------------------------#
+    parent_ID = parent_shard_fork_choice.shard_ID
 
     # THE CHILD SHARD HAS TO FILTER BLOCKS FROM ITS FORK CHOICE
     # AS A FUNCTION OF THE FORK CHOICE OF THE PARENT

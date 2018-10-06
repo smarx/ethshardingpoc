@@ -7,7 +7,7 @@ from config import VALIDATOR_WEIGHTS
 from config import TTL_CONSTANT
 from evm_transition import apply_to_state
 
-from fork_choice import sharded_fork_choice
+from fork_choice import fork_choice, sharded_fork_choice
 
 import copy
 
@@ -92,7 +92,13 @@ class Validator:
             if m.sender == 0:
                 genesis_blocks[m.estimate.shard_ID] = m.estimate
 
-        return sharded_fork_choice(genesis_blocks, blocks, self.get_weighted_blocks())
+
+        weighted_blocks = self.get_weighted_blocks()
+
+        # THE PARENT SHARD FORK CHOICE IS INDEPENDENT OF THE CHILD SHARD
+        parent_shard_fork_choice = fork_choice(genesis_blocks[SHARD_IDS[0]], blocks, weighted_blocks)
+        child_IDs = SHARD_IDS[1:]
+        return sharded_fork_choice(genesis_blocks, blocks, weighted_blocks, parent_shard_fork_choice, child_IDs)
 
     def make_block(self, shard_ID, mempools, drain_amount, TTL=TTL_CONSTANT):
 
@@ -121,7 +127,7 @@ class Validator:
 
         # BUILD RECEIVED LOG WITH:
         received_log = ReceivedLog()
-        for ID in SHARD_IDS:
+        for ID in fork_choice.keys():
             if ID == shard_ID:
                 continue
 
@@ -134,13 +140,13 @@ class Validator:
 
         # PREP NEWLY RECEIVED PMESSAGES IN A RECEIVEDLOG FOR EVM:
         newly_received_messages = {}
-        for ID in SHARD_IDS:
+        for ID in fork_choice.keys():
             previous_received_log_size = len(prevblock.received_log.log[ID])
             current_received_log_size = len(received_log.log[ID])
             newly_received_messages[ID] = received_log.log[ID][previous_received_log_size:]
 
         newly_received_payloads = ReceivedLog()
-        for ID in SHARD_IDS:
+        for ID in fork_choice.keys():
             for m in newly_received_messages[ID]:
                 newly_received_payloads.add_received_message(ID, m)
         # --------------------------------------------------------------------#
@@ -158,7 +164,7 @@ class Validator:
 
         # BUILD SENT LOG FROM NEW OUTGOING PAYLOADS
         new_sent_messages = SentLog()
-        for ID in SHARD_IDS:
+        for ID in fork_choice.keys():
             if ID != shard_ID:
                 for m in new_outgoing_payloads.log[ID]:
                     # if TTL == 0, then we'll make an invalid block

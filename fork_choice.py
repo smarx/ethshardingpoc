@@ -53,7 +53,7 @@ def fork_choice(starting_block, blocks, weighted_blocks, block_filter=[]) -> Blo
     return this_block
 
 # Sharded fork choice rule returns a block for every shard
-def sharded_fork_choice(starting_blocks, blocks, weighted_blocks, parent_shard_fork_choice: Block, child_IDs: List[int]):
+def sharded_fork_choice(shard_ID, starting_blocks, blocks, weighted_blocks, parent_shard_fork_choice: Block):
     # TYPE GUARD
     for ID in starting_blocks.keys():
         assert ID in SHARD_IDS, "expected shard IDs"
@@ -65,13 +65,14 @@ def sharded_fork_choice(starting_blocks, blocks, weighted_blocks, parent_shard_f
         assert isinstance(b, Block), "expected blocks"
         assert b.is_valid(), "expected valid blocks"
 
+    assert isinstance(starting_blocks, dict), "expected dictionary"
     assert isinstance(weighted_blocks, dict), "expected dictionary"
     for b in weighted_blocks.keys():
         assert b in blocks, "expected weighted blocks to appear in blocks"
         assert isinstance(b, Block), "expected block"
         assert b.is_valid(), "expected valid blocks"
         assert weighted_blocks[b] > 0, "expected positive weights"
-    
+
     # --------------------------------------------------------------------#
 
     parent_ID = parent_shard_fork_choice.shard_ID
@@ -81,8 +82,8 @@ def sharded_fork_choice(starting_blocks, blocks, weighted_blocks, parent_shard_f
     block_filter = []
     for b in blocks:
 
-        # blocks on the parent shard aren't filtered
-        if b.shard_ID == parent_ID:
+        # we are only going to filter from children
+        if b.shard_ID != shard_ID:
             continue
 
         # FILTER BLOCKS THAT DONT AGREE WITH MOST RECENT SOURCE
@@ -141,4 +142,4 @@ def sharded_fork_choice(starting_blocks, blocks, weighted_blocks, parent_shard_f
 
 
     # CALCULATE CHILD FORK CHOICE (FILTERED GHOST)
-    return {child_ID:fork_choice(starting_blocks[child_ID], blocks, weighted_blocks, block_filter) for child_ID in child_IDs}
+    return fork_choice(starting_blocks[shard_ID], blocks, weighted_blocks, block_filter)

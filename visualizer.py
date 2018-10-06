@@ -113,7 +113,7 @@ def report(watcher):
     ShardBorder = nx.Graph();
 
     # The position of the shards may vary, so we get them from the fork choice:
-    fork_choice = watcher.all_fork_choices()
+    fork_choice = watcher.make_all_fork_choices()
 
     fork_choice_by_shard_height = sort_blocks_by_shard_height(fork_choice)
 

@@ -91,37 +91,54 @@ class Validator:
                 genesis_blocks[m.estimate.shard_ID] = m.estimate
         return genesis_blocks
 
-    def all_fork_choices(self):
-        blocks = self.get_blocks_from_consensus_messages()
-        weighted_blocks = self.get_weighted_blocks()
-        genesis_blocks = self.genesis_blocks()
-        return {shard_ID:fork_choice(genesis_blocks[shard_ID], blocks, weighted_blocks) for shard_ID in genesis_blocks}
 
-    def fork_choice(self, shard_ID):
+    def make_fork_choice(self, shard_ID):
         # the blocks in the view are the genesis blocks and blocks from consensus messages
         blocks = self.get_blocks_from_consensus_messages()
         weighted_blocks = self.get_weighted_blocks()
         genesis_blocks = self.genesis_blocks()
 
-        ret = {}
-        ret[shard_ID] = fork_choice(genesis_blocks[shard_ID], blocks, weighted_blocks)
+        # The root shard doesn't have filtered blocks
+        for g in genesis_blocks.values():
+            if g.parent_ID is None:
+                root_choice = fork_choice(genesis_blocks[g.shard_ID], blocks, weighted_blocks)
+                break
 
-        # get parent fork choice
-        parent_ID = ret[shard_ID].parent_ID
-        if parent_ID is not None:
-            ret[parent_ID] = fork_choice(genesis_blocks[parent_ID], blocks, weighted_blocks)
+        # If we're just asking for the root shard, then we're done
+        if root_choice.shard_ID == shard_ID:
+            return root_choice
 
-        # get children fork choices
-        children = sharded_fork_choice(genesis_blocks, blocks, weighted_blocks, ret[shard_ID], ret[shard_ID].child_IDs)
-        for c in children:
-            ret[c] = children[c]
+        # Getting sequence of shards from shard_ID to root shard
+        backwards_shard_sequence = []
+        this_ID = shard_ID
+        while(this_ID != root_choice.shard_ID):
+            backwards_shard_sequence.append(this_ID)
+            this_ID = genesis_blocks[this_ID].parent_ID
 
-        return ret
+        shard_sequence = []
+        for i in range(len(backwards_shard_sequence)):
+            shard_sequence.append(backwards_shard_sequence[-i])
+
+        # FORK CHOICE HAPPENS HERE:
+        next_fork_choice = root_choice
+        for i in range(len(backwards_shard_sequence)):
+            next_fork_choice = sharded_fork_choice(shard_sequence[i], genesis_blocks, blocks, weighted_blocks, next_fork_choice)
+
+        assert next_fork_choice.shard_ID == shard_ID, "expected fork choice to be on requested shard"
+
+        return next_fork_choice
+
+    def make_all_fork_choices(self):
+
+        fork_choices = {}
+        for shard_ID in SHARD_IDS:
+            fork_choices[shard_ID] = self.make_fork_choice(shard_ID)
+        return fork_choices
 
     def make_block(self, shard_ID, mempools, drain_amount, TTL=TTL_CONSTANT):
         # RUN FORK CHOICE RULE
         # will only have fork choices for parent and children
-        fork_choice = self.fork_choice(shard_ID)
+        fork_choice = self.make_all_fork_choices()
         # --------------------------------------------------------------------#
 
 
@@ -156,16 +173,22 @@ class Validator:
             received_log.log[ID] = fork_choice[ID].sent_log.log[shard_ID]
         # --------------------------------------------------------------------#
 
+        genesis_blocks = self.genesis_blocks()
+        neighbor_shard_IDs = []
+        if genesis_blocks[shard_ID].parent_ID is not None:
+            neighbor_shard_IDs.append(genesis_blocks[shard_ID].parent_ID)
+        for ID in genesis_blocks[shard_ID].child_IDs:
+            neighbor_shard_IDs.append(ID)
 
         # PREP NEWLY RECEIVED PMESSAGES IN A RECEIVEDLOG FOR EVM:
         newly_received_messages = {}
-        for ID in fork_choice.keys():
+        for ID in neighbor_shard_IDs:
             previous_received_log_size = len(prevblock.received_log.log[ID])
             current_received_log_size = len(received_log.log[ID])
             newly_received_messages[ID] = received_log.log[ID][previous_received_log_size:]
 
         newly_received_payloads = MessagesLog()
-        for ID in fork_choice.keys():
+        for ID in neighbor_shard_IDs:
             for m in newly_received_messages[ID]:
                 newly_received_payloads.add_message(ID, m)
         # --------------------------------------------------------------------#

@@ -254,7 +254,14 @@ def report(watcher):
         # get positions:
         assert relative_height <= 1, "expected relative height to be less than 1"
         xoffset = relative_height*(shard_display_width_by_height[shard_height] - 2*DISPLAY_MARGIN)
-        messagesPos[m] = (validator_left_x_coordinate[m.sender] + xoffset, validator_y_coordinate[m.sender])
+
+        if m.sender != 0:
+            messagesPos[m] = (validator_left_x_coordinate[m.sender] + xoffset, validator_y_coordinate[m.sender])
+        else:
+            x = ShardBorderPoS[(m.estimate.shard_ID, "topleft")][0] + DISPLAY_MARGIN
+            y = (ShardBorderPoS[(m.estimate.shard_ID, "topleft")][1] + ShardBorderPoS[(m.estimate.shard_ID, "bottomleft")][1])/2
+            messagesPos[m] = (x, y)
+
 
         # this map will help us draw nodes from prevblocks, sources, etc
         print("m.estimate.hash:  ", m.estimate.hash)

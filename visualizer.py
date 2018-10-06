@@ -101,7 +101,7 @@ def report(watcher):
     GraphBorder.add_edge("bottomleft", "bottomright")
 
     nx.draw_networkx_nodes(GraphBorder, CornersPos, node_size=0)
-    nx.draw_networkx_edges(GraphBorder, CornersPos, width=0.25)
+    nx.draw_networkx_edges(GraphBorder, CornersPos, width=1.5)
 
 
     # SHARD BOXES
@@ -150,7 +150,7 @@ def report(watcher):
             ShardBorderPoS[(shard_ID, "bottomright")] = (x_right, y_bottom)
 
     nx.draw_networkx_nodes(ShardBorder, ShardBorderPoS, node_size=0)
-    nx.draw_networkx_edges(ShardBorder, ShardBorderPoS, width=0.25)
+    nx.draw_networkx_edges(ShardBorder, ShardBorderPoS, width=1)
 
 
     # VALIDATOR LINES
@@ -327,7 +327,6 @@ def report(watcher):
     nx.draw_networkx_nodes(ShardMessagesGraph, shard_messagesPos, node_shape='o', node_color='#f6546a', node_size=250)
     nx.draw_networkx_edges(ShardMessagesOriginGraph, shard_messagesPos, width=6, style='dotted')
 
-    '''
     # CROSS SHARD MESSAGE RECEIVE ARROWS
     OrphanedReceivedMessagesGraph = nx.DiGraph();
     AcceptedReceivedMessagesGraph = nx.DiGraph();
@@ -350,24 +349,35 @@ def report(watcher):
 
                 shard_messagesPos[new_received_message] = messagesPos[m]
 
-                if new_received_message in consensus_message_by_shard_message.keys():
-                    sender_shard_ID = consensus_message_by_shard_message[new_received_message].estimate.shard_ID
-                    sending_block_is_in_fork_choice = fork_choice[sender_shard_ID].is_in_chain(consensus_message_by_shard_message[new_received_message].estimate)
-                else:
-                    # not a great assumption, but this case happens I think because of displayable message limit
-                    sending_block_is_in_fork_choice = True
+                #  Hypothesis is that this continue only occurs when the source of the new received is outside of the displayable messages
+                if new_received_message not in consensus_message_by_shard_message.keys():
+                    continue
 
-                if fork_choice[m.estimate.shard_ID].is_in_chain(m.estimate) and sending_block_is_in_fork_choice:
-                    AcceptedReceivedMessagesGraph.add_edge(new_received_message, m)
-                else:
-                    OrphanedReceivedMessagesGraph.add_edge(new_received_message, m)
+                new_shard_message_origin = consensus_message_by_shard_message[new_received_message]
+                sending_block = new_shard_message_origin.estimate
+
+                if fork_choice[m.estimate.shard_ID].is_in_chain(m.estimate):
+                    if fork_choice[sending_block.shard_ID].is_in_chain(sending_block):
+                        print("m.estimate", m.estimate)
+                        print("sending_block", sending_block)
+                        print("fork_choice[m.estimate.shard_ID]", fork_choice[m.estimate.shard_ID])
+                        print("fork_choice[sending_block.shard_ID]", fork_choice[sending_block.shard_ID])
+                        AcceptedReceivedMessagesGraph.add_edge(new_shard_message_origin, m)
+                        continue
+
+                OrphanedReceivedMessagesGraph.add_edge(new_shard_message_origin, new_received_message)
 
     nx.draw_networkx_edges(AcceptedReceivedMessagesGraph, shard_messagesPos, edge_color='#600787', arrowsize=50, arrowstyle='->', width=6)
-    nx.draw_networkx_edges(OrphanedReceivedMessagesGraph, shard_messagesPos, edge_color='#600787', arrowsize=20, arrowstyle='->', width=0.75)
-    '''
+    nx.draw_networkx_edges(OrphanedReceivedMessagesGraph, shard_messagesPos, edge_color='#600787', arrowsize=20, arrowstyle='->', width=1.25)
 
+
+    plt.axis('off')
+    plt.draw()
+    plt.pause(PAUSE_LENGTH)
+
+
+'''
     ax = plt.axes()
-
     # FLOATING TEXT
     ax.text(0, 0.2, 'child shard',
     horizontalalignment='right',
@@ -376,14 +386,6 @@ def report(watcher):
     transform=ax.transAxes,
     size=25)
 
-    plt.axis('off')
-    plt.draw()
-    plt.pause(PAUSE_LENGTH)
-
-
-
-
-'''
     # FLOATING TEXT
     ax.text(0, 0.2, 'child shard',
     horizontalalignment='right',

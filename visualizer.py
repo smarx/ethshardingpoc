@@ -1,0 +1,480 @@
+import random
+import hashlib
+import matplotlib.pyplot as plt
+import numpy as np
+import networkx as nx
+from blocks import Block
+from config import *
+import copy
+
+
+def blocks_by_shard_display_height(blocks):
+    heights = {}
+    blocks_by_height = {}
+    unsorted_blocks = blocks
+    for b in unsorted_blocks:
+        # Root shard has no parent
+        if b.parent_ID is None:
+            heights[b] = 0
+            blocks_by_height[0] = [b]
+            unsorted_blocks.remove(b)
+            break
+
+    while len(unsorted_blocks) > 0:
+        for b in unsorted_blocks:
+            # If we have the height of their parent
+            if b.parent_ID in heights.keys():
+                # Then we can assign their height (parent height + 1)
+                heights[b] = 1 + heights[b.parent_ID]
+
+                if heights[b] not in blocks_by_height.keys():
+                    blocks_by_height[heights[b]] = [b]
+                else:
+                    blocks_by_height[heights[b]].append(b)
+
+                unsorted_blocks.remove(b)
+
+    return blocks_by_height
+
+
+# This function returns a map from height to a list of shards
+def sort_blocks_by_shard_height(block_by_shard):
+
+    for b in block_by_shard.values():
+        assert isinstance(b, Block), "expected only blocks"
+
+    for ID in block_by_shard.keys():
+        assert ID in SHARD_IDS, "expected shard ID"
+
+    blocks_by_height = {}
+    for b in block_by_shard.values():
+        # Root shard has no parent
+        if b.parent_ID is None:
+            root_shard_tip = b
+            break
+
+    return recur_sort_shards(block_by_shard, [root_shard_tip], 0, blocks_by_height)
+
+# Implements a depth first search of the shard tree
+# The order of the search is determined by 'sorted' of shard_IDs
+def recur_sort_shards(block_by_shard, sorted_children, height, blocks_by_height):
+    if sorted_children == []:
+        return
+
+    for b in sorted_children:
+        assert isinstance(b, Block), "expected children to be blocks"
+
+    for child in sorted_children:
+        if height not in blocks_by_height.keys():
+            blocks_by_height[height] = [child]
+        else:
+            blocks_by_height[height].append(child)
+
+        sorted_child_IDs = sorted(child.child_IDs)
+        children = []
+        for i in range(len(sorted_child_IDs)):
+            children.append(block_by_shard[sorted_child_IDs[i]])
+
+        recur_sort_shards(block_by_shard, children, height + 1, blocks_by_height)
+
+    return blocks_by_height
+
+
+def report(watcher):
+    plt.clf()
+
+    # OUTSIDE BORDER BOX
+    GraphBorder = nx.Graph();
+    CornersPos = {}
+    CornersPos["topleft"] = (0, 0)
+    CornersPos["topright"] = (DISPLAY_WIDTH, 0)
+    CornersPos["bottomleft"] = (0, DISPLAY_HEIGHT)
+    CornersPos["bottomright"] = (DISPLAY_WIDTH,  DISPLAY_HEIGHT)
+
+    GraphBorder.add_node("topleft")
+    GraphBorder.add_node("topright")
+    GraphBorder.add_node("bottomleft")
+    GraphBorder.add_node("bottomright")
+    GraphBorder.add_edge("topright", "topleft")
+    GraphBorder.add_edge("topright", "bottomright")
+    GraphBorder.add_edge("topleft", "bottomleft")
+    GraphBorder.add_edge("bottomleft", "bottomright")
+
+    nx.draw_networkx_nodes(GraphBorder, CornersPos, node_size=0)
+    nx.draw_networkx_edges(GraphBorder, CornersPos, width=0.25)
+
+
+    # SHARD BOXES
+    ShardBorder = nx.Graph();
+
+    # The position of the shards may vary, so we get them from the fork choice:
+    fork_choice = watcher.all_fork_choices()
+
+    fork_choice_by_shard_height = sort_blocks_by_shard_height(fork_choice)
+
+    num_layers = len(fork_choice_by_shard_height.keys())
+
+    num_shards_by_height = {}
+    for i in range(num_layers):
+        num_shards_by_height[i] = len(fork_choice_by_shard_height[i])
+
+    shard_display_width_by_height = {}
+    for i in range(num_layers):
+        shard_display_width_by_height[i] = (DISPLAY_WIDTH - 2*DISPLAY_MARGIN - (num_shards_by_height[i] - 1)*SHARD_X_SPACING)/num_shards_by_height[i]
+
+    shard_display_height = (DISPLAY_HEIGHT - 2*DISPLAY_MARGIN - (num_layers - 1)*SHARD_Y_SPACING)/num_layers
+
+    ShardBorderPoS = {}
+    for h in range(num_layers):
+        y_top = DISPLAY_MARGIN + i*(shard_display_height + SHARD_Y_SPACING)
+        y_bottom = y_top + shard_display_height
+        for i in range(len(fork_choice_by_shard_height[h])):
+            assert isinstance(fork_choice_by_shard_height[h][i], Block), "expected block"
+            shard_ID = fork_choice_by_shard_height[h][i].shard_ID
+
+            ShardBorder.add_node((shard_ID, "topleft"))
+            ShardBorder.add_node((shard_ID, "topright"))
+            ShardBorder.add_node((shard_ID, "bottomleft"))
+            ShardBorder.add_node((shard_ID, "bottomright"))
+            ShardBorder.add_edge((shard_ID, "topleft"), (shard_ID, "topright"))
+            ShardBorder.add_edge((shard_ID, "topleft"), (shard_ID, "bottomleft"))
+            ShardBorder.add_edge((shard_ID, "topright"), (shard_ID, "bottomright"))
+            ShardBorder.add_edge((shard_ID, "bottomleft"), (shard_ID, "bottomright"))
+
+            x_left = DISPLAY_MARGIN + i*(shard_display_width_by_height[h] + SHARD_X_SPACING)
+            x_right = x_left + shard_display_width_by_height[h]
+
+            ShardBorderPoS[(shard_ID, "topleft")] = (x_left, y_top)
+            ShardBorderPoS[(shard_ID, "topright")] = (x_right, y_top)
+            ShardBorderPoS[(shard_ID, "bottomleft")] = (x_left, y_bottom)
+            ShardBorderPoS[(shard_ID, "bottomright")] = (x_right, y_bottom)
+
+    nx.draw_networkx_nodes(ShardBorder, ShardBorderPoS, node_size=0)
+    nx.draw_networkx_edges(ShardBorder, ShardBorderPoS, width=0.25)
+
+
+    # VALIDATOR LINES
+    ValidatorLines = nx.Graph();
+    for v in VALIDATOR_NAMES:
+        ValidatorLines.add_node((v, "left"))
+        ValidatorLines.add_node((v, "right"))
+        ValidatorLines.add_edge((v, "left"), (v, "right"))  
+
+
+    validator_y_coordinate = {}
+    validator_left_x_coordinate = {}
+    ValidatorLinePoS = {}
+    for ID in SHARD_IDS:
+        x_left = ShardBorderPoS[(ID, "topleft")][0] + DISPLAY_MARGIN
+        x_right = ShardBorderPoS[(ID, "topright")][0] - DISPLAY_MARGIN
+
+
+        num_validators = len(SHARD_VALIDATOR_ASSIGNMENT[ID])
+        validator_y_spacing = (1.)/(num_validators + 1)
+
+        for i in range(num_validators):
+            v = SHARD_VALIDATOR_ASSIGNMENT[ID][i]
+            relative_validator_display_height = (i + 1)*validator_y_spacing
+
+            validator_y_coordinate[v] = ShardBorderPoS[(ID, "topleft")][1] + shard_display_height*relative_validator_display_height
+            validator_left_x_coordinate[v] = x_left
+
+            y = validator_y_coordinate[v]
+
+            ValidatorLinePoS[(v, "left")] = (x_left, y)
+            ValidatorLinePoS[(v, "right")] = (x_right, y)
+
+
+    nx.draw_networkx_nodes(ValidatorLines, ValidatorLinePoS, node_size=0)
+    nx.draw_networkx_edges(ValidatorLines, ValidatorLinePoS, width=0.25)
+
+
+    # PREVBLOCK POINTERS, FORK CHOICE AND SOURCES
+    X_SPACE_PER_MESSAGE_HEIGHT = (DISPLAY_WIDTH - 2*DISPLAY_MARGIN)/CONSENSUS_MESSAGE_HEIGHTS_TO_DISPLAY_IN_ROOT
+
+    window_size_by_shard_height = {}
+
+    for h in range(num_layers):
+        window_size_by_shard_height[h] = shard_display_width_by_height[h]/X_SPACE_PER_MESSAGE_HEIGHT
+
+    assert window_size_by_shard_height[0] == CONSENSUS_MESSAGE_HEIGHTS_TO_DISPLAY_IN_ROOT, "!!!"
+
+    max_message_display_height_by_shard = {}
+    for ID in SHARD_IDS:
+        max_message_display_height_by_shard[ID] = 0
+
+    for m in watcher.consensus_messages:
+        if max_message_display_height_by_shard[m.estimate.shard_ID] < m.height:
+            max_message_display_height_by_shard[m.estimate.shard_ID] = m.height
+
+    shard_display_height_by_shard_ID = {}
+    for h in range(num_layers):
+        for b in fork_choice_by_shard_height[h]:
+            shard_display_height_by_shard_ID[b.shard_ID] = h
+
+    # messages in the shard windows
+    displayable_messages = []
+    for m in watcher.consensus_messages:
+        # checks if m is in the display window for its shard
+        ID = m.estimate.shard_ID
+        shard_height = shard_display_height_by_shard_ID[ID]
+        if m.height >= max_message_display_height_by_shard[ID] - window_size_by_shard_height[shard_height]:
+            displayable_messages.append(m)
+
+    # prevblock pointers, fork choices, and sources
+    PrevblockGraph = nx.DiGraph();
+    ForkChoiceGraph = nx.DiGraph();
+    SourcesGraph = nx.DiGraph();
+
+    messagesPos = {}
+    senders = {}
+    block_to_message = {}
+
+    for m in displayable_messages:
+        PrevblockGraph.add_node(m)
+        ForkChoiceGraph.add_node(m)
+        SourcesGraph.add_node(m)
+
+        ID = m.estimate.shard_ID
+        shard_height = shard_display_height_by_shard_ID[ID]
+
+        if max_message_display_height_by_shard[ID] > window_size_by_shard_height[shard_display_height_by_shard_ID[ID]]:
+            start_of_window = max_message_display_height_by_shard[ID] - window_size_by_shard_height[shard_height]
+        else:
+            start_of_window = 0
+
+        used_window = max_message_display_height_by_shard[ID] - start_of_window
+        relative_height = (m.height - start_of_window)/(used_window + 1)
+
+        # get positions:
+        assert relative_height <= 1, "expected relative height to be less than 1"
+        xoffset = relative_height*(shard_display_width_by_height[shard_height] - 2*DISPLAY_MARGIN)
+        messagesPos[m] = (validator_left_x_coordinate[m.sender] + xoffset, validator_y_coordinate[m.sender])
+
+        # this map will help us draw nodes from prevblocks, sources, etc
+        print("m.estimate.hash:  ", m.estimate.hash)
+        print("m.estimate:  ", m.estimate)
+        print("m.sender:  ", m.sender)
+        assert m.estimate not in block_to_message, "expected unique blocks"
+        block_to_message[m.estimate] = m
+
+    for m in displayable_messages:
+        # define edges for prevblock graph
+        if m.estimate.prevblock is not None and m.estimate.prevblock in block_to_message:
+            PrevblockGraph.add_edge(m, block_to_message[m.estimate.prevblock])
+
+        neighbor_shards = []
+        if m.estimate.parent_ID is not None:
+            neighbor_shards.append(m.estimate.parent_ID)
+        for ID in m.estimate.child_IDs:
+            neighbor_shards.append(ID)
+
+        for ID in neighbor_shards:
+           # SourcesGraph define edges
+            if m.estimate.received_log.sources[ID] is not None and m.estimate.received_log.sources[ID] in block_to_message:
+                SourcesGraph.add_edge(m, block_to_message[m.estimate.received_log.sources[ID]])
+
+    # ForkChoiceGraph define edges
+    for ID in SHARD_IDS:
+        this_block = fork_choice[ID]
+        while(this_block.prevblock is not None and this_block.prevblock in block_to_message):
+            ForkChoiceGraph.add_edge(block_to_message[this_block], block_to_message[this_block.prevblock])
+            this_block = this_block.prevblock
+
+    # Draw edges
+    nx.draw_networkx_edges(SourcesGraph, messagesPos, style='dashdot', edge_color='y', arrowsize=10, width=1)
+    nx.draw_networkx_edges(ForkChoiceGraph, messagesPos, edge_color='#66b266', arrowsize=25, width=15)
+    nx.draw_networkx_edges(PrevblockGraph, messagesPos, width=3)
+    nx.draw_networkx_nodes(PrevblockGraph, messagesPos, node_shape='s', node_color='#0066cc', node_size=300)
+
+
+    # CROSS SHARD MESSAGES
+    ShardMessagesGraph = nx.Graph();
+    ShardMessagesOriginGraph = nx.Graph();
+    shard_messagesPos = {}
+
+    consensus_message_by_shard_message = {}
+    for m in displayable_messages:
+        ShardMessagesOriginGraph.add_node(m)
+        shard_messagesPos[m] = messagesPos[m]
+
+        # Messages to parents are displayed above their sending blocks
+        if m.estimate.parent_ID is not None:
+            ID = m.estimate.parent_ID
+            for shard_message in m.estimate.newly_sent()[ID]:
+                assert shard_message not in consensus_message_by_shard_message.keys(), "expected not to overwrite consensus message"
+                consensus_message_by_shard_message[shard_message] = m
+                ShardMessagesGraph.add_node(shard_message)
+                ShardMessagesOriginGraph.add_node(shard_message)
+                xoffset = (m.height % 3 - 1)*SHARD_MESSAGE_XOFFSET
+                yoffset = SHARD_MESSAGE_YOFFSET
+                shard_messagesPos[shard_message] = (messagesPos[m][0] + xoffset, messagesPos[m][1] + yoffset)
+                ShardMessagesOriginGraph.add_edge(m, shard_message)
+
+        # Messages to children are displayed below their sending blocks
+        for ID in m.estimate.child_IDs:
+            for shard_message in m.estimate.newly_sent()[ID]:
+                assert shard_message not in consensus_message_by_shard_message.keys(), "expected not to overwrite consensus message"
+                consensus_message_by_shard_message[shard_message] = m
+                ShardMessagesGraph.add_node(shard_message)
+                ShardMessagesOriginGraph.add_node(shard_message)
+                yoffset = -SHARD_MESSAGE_YOFFSET
+                xoffset = (m.height % 3 - 1)*SHARD_MESSAGE_XOFFSET
+                shard_messagesPos[shard_message] = (messagesPos[m][0] + xoffset, messagesPos[m][1] + yoffset)
+                ShardMessagesOriginGraph.add_edge(m, shard_message)
+
+    nx.draw_networkx_nodes(ShardMessagesOriginGraph, shard_messagesPos, node_size=0)
+    nx.draw_networkx_nodes(ShardMessagesGraph, shard_messagesPos, node_shape='o', node_color='#f6546a', node_size=250)
+    nx.draw_networkx_edges(ShardMessagesOriginGraph, shard_messagesPos, width=6, style='dotted')
+
+    '''
+    # CROSS SHARD MESSAGE RECEIVE ARROWS
+    OrphanedReceivedMessagesGraph = nx.DiGraph();
+    AcceptedReceivedMessagesGraph = nx.DiGraph();
+
+    for m in displayable_messages:
+        neighbor_shards = []
+        if m.estimate.parent_ID is not None:
+            neighbor_shards.append(m.estimate.parent_ID)
+        for ID in m.estimate.child_IDs:
+            neighbor_shards.append(ID)
+
+        OrphanedReceivedMessagesGraph.add_node(m)
+        AcceptedReceivedMessagesGraph.add_node(m)
+
+        for ID in neighbor_shards:
+            for new_received_message in m.estimate.newly_received()[ID]:
+
+                OrphanedReceivedMessagesGraph.add_node(new_received_message)
+                AcceptedReceivedMessagesGraph.add_node(new_received_message)
+
+                shard_messagesPos[new_received_message] = messagesPos[m]
+
+                if new_received_message in consensus_message_by_shard_message.keys():
+                    sender_shard_ID = consensus_message_by_shard_message[new_received_message].estimate.shard_ID
+                    sending_block_is_in_fork_choice = fork_choice[sender_shard_ID].is_in_chain(consensus_message_by_shard_message[new_received_message].estimate)
+                else:
+                    # not a great assumption, but this case happens I think because of displayable message limit
+                    sending_block_is_in_fork_choice = True
+
+                if fork_choice[m.estimate.shard_ID].is_in_chain(m.estimate) and sending_block_is_in_fork_choice:
+                    AcceptedReceivedMessagesGraph.add_edge(new_received_message, m)
+                else:
+                    OrphanedReceivedMessagesGraph.add_edge(new_received_message, m)
+
+    nx.draw_networkx_edges(AcceptedReceivedMessagesGraph, shard_messagesPos, edge_color='#600787', arrowsize=50, arrowstyle='->', width=6)
+    nx.draw_networkx_edges(OrphanedReceivedMessagesGraph, shard_messagesPos, edge_color='#600787', arrowsize=20, arrowstyle='->', width=0.75)
+    '''
+
+    ax = plt.axes()
+
+    # FLOATING TEXT
+    ax.text(0, 0.2, 'child shard',
+    horizontalalignment='right',
+    verticalalignment='center',
+    rotation='vertical',
+    transform=ax.transAxes,
+    size=25)
+
+    plt.axis('off')
+    plt.draw()
+    plt.pause(PAUSE_LENGTH)
+
+
+
+
+'''
+    # FLOATING TEXT
+    ax.text(0, 0.2, 'child shard',
+    horizontalalignment='right',
+    verticalalignment='center',
+    rotation='vertical',
+    transform=ax.transAxes,
+    size=25)
+
+    ax.text(0, 0.75, 'parent shard',
+    horizontalalignment='right',
+    verticalalignment='center',
+    rotation='vertical',
+    transform=ax.transAxes,
+    size=25)
+
+    ax.text(0.1, 0, 'messages received by \n the child fork choice:',
+    horizontalalignment='center',
+    verticalalignment='bottom',
+    transform=ax.transAxes,
+    size=20)
+
+    ax.text(0.1, -0.05, len(fork_choice[1].received_log.log[0]),
+    horizontalalignment='center',
+    verticalalignment='bottom',
+    transform=ax.transAxes,
+    size=30)
+
+    ax.text(0.25, 0, 'messages sent by \n the child fork choice:',
+    horizontalalignment='center',
+    verticalalignment='bottom',
+    transform=ax.transAxes,
+    size=20)
+
+    ax.text(0.25, -0.05, len(fork_choice[1].sent_log.log[0]),
+    horizontalalignment='center',
+    verticalalignment='bottom',
+    transform=ax.transAxes,
+    size=30)
+
+    ax.text(0.1, 1, 'messages sent by \n the parent fork choice:',
+    horizontalalignment='center',
+    verticalalignment='bottom',
+    transform=ax.transAxes,
+    size=20)
+
+    ax.text(0.1, 0.95, len(fork_choice[0].sent_log.log[1]),
+    horizontalalignment='center',
+    verticalalignment='bottom',
+    transform=ax.transAxes,
+    size=30)
+
+    ax.text(0.25, 1, 'messages received by \n the parent fork choice:',
+    horizontalalignment='center',
+    verticalalignment='bottom',
+    transform=ax.transAxes,
+    size=20)
+
+    ax.text(0.25, 0.95, len(fork_choice[0].received_log.log[1]),
+    horizontalalignment='center',
+    verticalalignment='bottom',
+    transform=ax.transAxes,
+    size=30)
+
+
+    ax.text(0.4, 0, 'deadbeef balance on \n the child fork choice:',
+    horizontalalignment='center',
+    verticalalignment='bottom',
+    transform=ax.transAxes,
+    size=20)
+
+    ax.text(0.4, -0.05, fork_choice[1].vm_state["pre"][DEADBEEF[2:].lower()]["balance"],
+    horizontalalignment='center',
+    verticalalignment='bottom',
+    transform=ax.transAxes,
+    size=30)
+
+    ax.text(0.4, 1, 'deadbeef balance on \n the parent fork choice:',
+    horizontalalignment='center',
+    verticalalignment='bottom',
+    transform=ax.transAxes,
+    size=20)
+
+    ax.text(0.4, 0.95, fork_choice[0].vm_state["pre"][DEADBEEF[2:].lower()]["balance"],
+    horizontalalignment='center',
+    verticalalignment='bottom',
+    transform=ax.transAxes,
+    size=30)
+
+
+
+    plt.axis('off')
+    plt.draw()
+    plt.pause(PAUSE_LENGTH)
+'''

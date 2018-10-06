@@ -36,7 +36,7 @@ def convert_state_to_pre(state):
 #   mempool (originally a file full of test data?) and ones that are constructed from
 #   `MessagePayload`s. (This is done via `web3.eth.account.signTransaction(…)`.)
 # function apply(vm_state, [tx], mapping(S => received)) -> (vm_state, mapping(S => received) )
-def apply_to_state(pre_state, tx, received_log):
+def apply_to_state(pre_state, tx, received_log, genesis_blocks):
     assert isinstance(received_log, MessagesLog), "expected received log"
     # print(pre_state["pre"][address]["nonce"])   
     nonce = int(pre_state["pre"][pusher_address]["nonce"], 0)
@@ -87,8 +87,11 @@ def apply_to_state(pre_state, tx, received_log):
             for event in contract.events.SentMessage().processReceipt(receipt):
                 sent_log.add_message(
                     event.args.shard_ID,
+                    # This is not a message that will be stored in the sent log, it will be
+                    # postprocessed in make_block. Namely, the next hop shard will be computed,
+                    # the base block will be computed and TTL will be assigned.
                     Message(
-                        Block(event.args.shard_ID),
+                        Block(event.args.shard_ID, sources={ID : genesis_blocks[ID] for ID in SHARD_IDS}),
                         10,
                         event.args.shard_ID,
                         MessagePayload(

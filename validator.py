@@ -7,7 +7,7 @@ from config import VALIDATOR_WEIGHTS
 from config import TTL_CONSTANT
 from evm_transition import apply_to_state
 
-from fork_choice import sharded_fork_choice
+from fork_choice import fork_choice, sharded_fork_choice
 
 import copy
 
@@ -82,22 +82,45 @@ class Validator:
             blocks.append(m.estimate)
         return blocks
 
-    def fork_choice(self):
-        # the blocks in the view are the genesis blocks and blocks from consensus messages
-        blocks = self.get_blocks_from_consensus_messages()
-
-        #  maybe this should be a parameter, but it's not so bad
+    # TODO: memoize? this shouldn't change
+    def genesis_blocks(self):
         genesis_blocks = {}
         for m in self.consensus_messages:
             if m.sender == 0:
                 genesis_blocks[m.estimate.shard_ID] = m.estimate
+        return genesis_blocks
 
-        return sharded_fork_choice(genesis_blocks, blocks, self.get_weighted_blocks())
+    def all_fork_choices(self):
+        blocks = self.get_blocks_from_consensus_messages()
+        weighted_blocks = self.get_weighted_blocks()
+        genesis_blocks = self.genesis_blocks()
+        return {shard_ID:fork_choice(genesis_blocks[shard_ID], blocks, weighted_blocks) for shard_ID in genesis_blocks}
+
+    def fork_choice(self, shard_ID):
+        # the blocks in the view are the genesis blocks and blocks from consensus messages
+        blocks = self.get_blocks_from_consensus_messages()
+        weighted_blocks = self.get_weighted_blocks()
+        genesis_blocks = self.genesis_blocks()
+
+        ret = {}
+        ret[shard_ID] = fork_choice(genesis_blocks[shard_ID], blocks, weighted_blocks)
+
+        # get parent fork choice
+        parent_ID = ret[shard_ID].parent_ID
+        if parent_ID is not None:
+            ret[parent_ID] = fork_choice(genesis_blocks[parent_ID], blocks, weighted_blocks)
+
+        # get children fork choices
+        children = sharded_fork_choice(genesis_blocks, blocks, weighted_blocks, ret[shard_ID], ret[shard_ID].child_IDs)
+        for c in children:
+            ret[c] = children[c]
+
+        return ret
 
     def make_block(self, shard_ID, mempools, drain_amount, TTL=TTL_CONSTANT):
-
         # RUN FORK CHOICE RULE
-        fork_choice = self.fork_choice()
+        # will only have fork choices for parent and children
+        fork_choice = self.fork_choice(shard_ID)
         # --------------------------------------------------------------------#
 
 
@@ -121,7 +144,7 @@ class Validator:
 
         # BUILD RECEIVED LOG WITH:
         received_log = ReceivedLog()
-        for ID in SHARD_IDS:
+        for ID in fork_choice.keys():
             if ID == shard_ID:
                 continue
 
@@ -134,13 +157,13 @@ class Validator:
 
         # PREP NEWLY RECEIVED PMESSAGES IN A RECEIVEDLOG FOR EVM:
         newly_received_messages = {}
-        for ID in SHARD_IDS:
+        for ID in fork_choice.keys():
             previous_received_log_size = len(prevblock.received_log.log[ID])
             current_received_log_size = len(received_log.log[ID])
             newly_received_messages[ID] = received_log.log[ID][previous_received_log_size:]
 
         newly_received_payloads = ReceivedLog()
-        for ID in SHARD_IDS:
+        for ID in fork_choice.keys():
             for m in newly_received_messages[ID]:
                 newly_received_payloads.add_received_message(ID, m)
         # --------------------------------------------------------------------#
@@ -153,14 +176,12 @@ class Validator:
 
         new_vm_state, new_outgoing_payloads = apply_to_state(prevblock.vm_state, data, newly_received_payloads)
 
-        if shard_ID == 1:
-            new_outgoing_payloads.log[0], new_outgoing_payloads.log[1] = new_outgoing_payloads.log[1], new_outgoing_payloads.log[0]
         # --------------------------------------------------------------------#
 
 
         # BUILD SENT LOG FROM NEW OUTGOING PAYLOADS
         new_sent_messages = SentLog()
-        for ID in SHARD_IDS:
+        for ID in fork_choice.keys():
             if ID != shard_ID:
                 for m in new_outgoing_payloads.log[ID]:
                     # if TTL == 0, then we'll make an invalid block

@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 import random
 import copy
 import json
@@ -60,12 +61,11 @@ for i in range(NUM_ROUNDS):
 
     # MAKE CONSENSUS MESSAGE
     new_message = validators[next_proposer].make_new_consensus_message(rand_ID, mempools, drain_amount=MEMPOOL_DRAIN_RATE)
+    watcher.receive_consensus_message(new_message)  # here the watcher is, receiving all the messages
 
     # keep max_height
     if new_message.height > max_height:
         max_height = new_message.height
-
-    watcher.receive_consensus_message(new_message)  # here the watcher is, receiving all the messages
 
     if FREE_INSTANT_BROADCAST:
         for v in VALIDATOR_NAMES:
@@ -132,7 +132,7 @@ for i in range(NUM_ROUNDS):
 
         # VISUALIZATION
         plt.clf()
-        fork_choice = watcher.fork_choice()
+        fork_choice = watcher.all_fork_choices()
         SHARD_SPACING_CONSTANT = 3
 
         ValidatorDashes = nx.Graph();

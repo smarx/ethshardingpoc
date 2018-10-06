@@ -17,8 +17,29 @@ from config import *
 GENESIS_BLOCKS = {}
 GENESIS_MESSAGES = []
 for ID in SHARD_IDS:
-    GENESIS_BLOCKS[ID] = Block(ID)
+    GENESIS_BLOCKS[ID] = Block(ID, sources={}) # temporarily set sources to {}, since genesis blocks are not known yet
     GENESIS_MESSAGES.append(ConsensusMessage(GENESIS_BLOCKS[ID], 0, []))  # The watcher is the sender of the genesis blocks
+
+for ID in SHARD_IDS:
+    GENESIS_BLOCKS[ID].sources = {ID : GENESIS_BLOCKS[ID] for ID in SHARD_IDS}
+    # TODO: this is where the tree structure is hardcoded. somewhere better?
+    if ID == 0:
+        GENESIS_BLOCKS[ID].parent_ID = None
+        GENESIS_BLOCKS[ID].child_IDs = [1,2]
+    elif ID == 1:
+        GENESIS_BLOCKS[ID].parent_ID = 0
+        GENESIS_BLOCKS[ID].child_IDs = [3, 4]
+    elif ID == 2:
+        GENESIS_BLOCKS[ID].parent_ID = 0
+        GENESIS_BLOCKS[ID].child_IDs = [5]
+    elif ID in [3, 4]:
+        GENESIS_BLOCKS[ID].parent_ID = 1
+        GENESIS_BLOCKS[ID].child_IDs = []
+    elif ID == 5:
+        GENESIS_BLOCKS[ID].parent_ID = 2
+        GENESIS_BLOCKS[ID].child_IDs = []
+    else:
+        assert False
 
 validators = {}
 for name in VALIDATOR_NAMES:
@@ -57,7 +78,7 @@ for i in range(NUM_ROUNDS):
         next_proposer = rand.choice(SHARD_VALIDATOR_ASSIGNMENT[rand_ID])
 
     # MAKE CONSENSUS MESSAGE
-    new_message = validators[next_proposer].make_new_consensus_message(rand_ID, mempools, drain_amount=MEMPOOL_DRAIN_RATE)
+    new_message = validators[next_proposer].make_new_consensus_message(rand_ID, mempools, drain_amount=MEMPOOL_DRAIN_RATE, genesis_blocks=GENESIS_BLOCKS)
     watcher.receive_consensus_message(new_message)  # here the watcher is, receiving all the messages
 
     # keep max_height

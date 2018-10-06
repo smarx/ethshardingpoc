@@ -1,6 +1,6 @@
 from blocks import Block, Message
-from blocks import ReceivedLog
-from blocks import SentLog
+from blocks import MessagesLog
+from blocks import MessagesLog
 from config import SHARD_IDS
 from config import VALIDATOR_NAMES
 from config import VALIDATOR_WEIGHTS
@@ -143,13 +143,14 @@ class Validator:
 
 
         # BUILD RECEIVED LOG WITH:
-        received_log = ReceivedLog()
+        received_log = MessagesLog()
+        sources = {ID : None for ID in SHARD_IDS}
         for ID in fork_choice.keys():
             if ID == shard_ID:
                 continue
 
             # SOURCES = FORK CHOICE (except for self)
-            received_log.sources[ID] = fork_choice[ID]
+            sources[ID] = fork_choice[ID]
             # RECEIVED = SENT MESSAGES FROM FORK CHOICE
             received_log.log[ID] = fork_choice[ID].sent_log.log[shard_ID]
         # --------------------------------------------------------------------#
@@ -162,10 +163,10 @@ class Validator:
             current_received_log_size = len(received_log.log[ID])
             newly_received_messages[ID] = received_log.log[ID][previous_received_log_size:]
 
-        newly_received_payloads = ReceivedLog()
+        newly_received_payloads = MessagesLog()
         for ID in fork_choice.keys():
             for m in newly_received_messages[ID]:
-                newly_received_payloads.add_received_message(ID, m)
+                newly_received_payloads.add_message(ID, m)
         # --------------------------------------------------------------------#
 
 
@@ -180,7 +181,7 @@ class Validator:
 
 
         # BUILD SENT LOG FROM NEW OUTGOING PAYLOADS
-        new_sent_messages = SentLog()
+        new_sent_messages = MessagesLog()
         for ID in fork_choice.keys():
             if ID != shard_ID:
                 for m in new_outgoing_payloads.log[ID]:
@@ -188,17 +189,17 @@ class Validator:
                     # one that sends a message that must be included by the base
                     # which already exists and therefore cannot include this message
                     if TTL > 0:
-                        new_sent_messages.log[ID].append(Message(fork_choice[ID], TTL, m.payload))
+                        new_sent_messages.log[ID].append(Message(fork_choice[ID], TTL, ID, m.payload))
                     else:
                         print("Warning: Not sending message because TTL == 0")
 
-        sent_log = prevblock.sent_log.append_SentLog(new_sent_messages)
+        sent_log = prevblock.sent_log.append_MessagesLog(new_sent_messages)
         # --------------------------------------------------------------------#
 
 
 
 
-        return Block(shard_ID, prevblock, new_txn_log, sent_log, received_log, new_vm_state)
+        return Block(shard_ID, prevblock, new_txn_log, sent_log, received_log, sources, new_vm_state)
 
     def make_new_consensus_message(self, shard_ID, mempools, drain_amount, TTL=TTL_CONSTANT):
 

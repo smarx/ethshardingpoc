@@ -1,6 +1,11 @@
 import random
 import hashlib
-import matplotlib.pyplot as plt
+try:
+    import matplotlib.pyplot as plt
+except:
+    import matplotlib
+    matplotlib.use('TkAgg')
+    import matplotlib.pyplot as plt
 import numpy as np
 import networkx as nx
 from blocks import Block
@@ -271,8 +276,8 @@ def report(watcher):
 
         for ID in neighbor_shards:
            # SourcesGraph define edges
-            if m.estimate.received_log.sources[ID] is not None and m.estimate.received_log.sources[ID] in block_to_message:
-                SourcesGraph.add_edge(m, block_to_message[m.estimate.received_log.sources[ID]])
+            if m.estimate.sources[ID] is not None and m.estimate.sources[ID] in block_to_message:
+                SourcesGraph.add_edge(m, block_to_message[m.estimate.sources[ID]])
 
     # ForkChoiceGraph define edges
     for ID in SHARD_IDS:

@@ -37,7 +37,7 @@ def convert_state_to_pre(state):
 #   `MessagePayload`s. (This is done via `web3.eth.account.signTransaction(…)`.)
 # function apply(vm_state, [tx], mapping(S => received)) -> (vm_state, mapping(S => received) )
 def apply_to_state(pre_state, tx, received_log):
-    assert isinstance(received_log, ReceivedLog), "expected received log"
+    assert isinstance(received_log, MessagesLog), "expected received log"
     # print(pre_state["pre"][address]["nonce"])   
     nonce = int(pre_state["pre"][pusher_address]["nonce"], 0)
     flattened_payloads = [message.payload for l in received_log.log.values() for message in l]
@@ -78,18 +78,19 @@ def apply_to_state(pre_state, tx, received_log):
             account[key] = "0x" + account[key]
 
     # look through logs for outgoing messages
-    sent_log = SentLog()
+    sent_log = MessagesLog()
     for receipt in result.get('receipts', []):
         if receipt['logs'] is not None:
             for log in receipt['logs']:
                 log['topics'] = [binascii.unhexlify(t[2:]) for t in log['topics']]
                 log['data'] = binascii.unhexlify(log['data'][2:])
             for event in contract.events.SentMessage().processReceipt(receipt):
-                sent_log.add_sent_message(
+                sent_log.add_message(
                     event.args.shard_ID,
                     Message(
                         Block(event.args.shard_ID),
                         10,
+                        event.args.shard_ID,
                         MessagePayload(
                             event.args.sendFromAddress.lower()[2:],
                             event.args.sendToAddress.lower()[2:],

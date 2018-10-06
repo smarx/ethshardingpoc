@@ -131,8 +131,8 @@ def report(watcher):
 
     ShardBorderPos = {}
     for h in range(num_layers):
-        y_top = DISPLAY_MARGIN + i*(shard_display_height + SHARD_Y_SPACING)
-        y_bottom = y_top + shard_display_height
+        y_top = DISPLAY_HEIGHT - (DISPLAY_MARGIN + h*(shard_display_height + SHARD_Y_SPACING))
+        y_bottom = y_top - shard_display_height
         for i in range(len(fork_choice_by_shard_height[h])):
             assert isinstance(fork_choice_by_shard_height[h][i], Block), "expected block"
             shard_ID = fork_choice_by_shard_height[h][i].shard_ID
@@ -181,7 +181,7 @@ def report(watcher):
             v = SHARD_VALIDATOR_ASSIGNMENT[ID][i]
             relative_validator_display_height = (i + 1)*validator_y_spacing
 
-            validator_y_coordinate[v] = ShardBorderPos[(ID, "topleft")][1] + shard_display_height*relative_validator_display_height
+            validator_y_coordinate[v] = ShardBorderPos[(ID, "topleft")][1] - shard_display_height*relative_validator_display_height
             validator_left_x_coordinate[v] = x_left
 
             y = validator_y_coordinate[v]
@@ -293,7 +293,7 @@ def report(watcher):
             this_block = this_block.prevblock
 
     # Draw edges
-    nx.draw_networkx_edges(SourcesGraph, messagesPos, style='dashdot', edge_color='y', arrowsize=10, width=1)
+    #nx.draw_networkx_edges(SourcesGraph, messagesPos, style='dashdot', edge_color='y', arrowsize=10, width=1)
     nx.draw_networkx_edges(ForkChoiceGraph, messagesPos, edge_color='#66b266', arrowsize=25, width=15)
     nx.draw_networkx_edges(PrevblockGraph, messagesPos, width=3)
     nx.draw_networkx_nodes(PrevblockGraph, messagesPos, node_shape='s', node_color='#0066cc', node_size=300)
@@ -399,10 +399,9 @@ def report(watcher):
     ax = plt.axes()
     # FLOATING TEXT
     for ID in SHARD_IDS:
-        ax.text(ShardBorderPos[(ID,"bottomleft")][0]/(DISPLAY_WIDTH + 0.00001), ShardBorderPos[(ID,"bottomleft")][1]/(DISPLAY_HEIGHT + 0.00001), ID,
+        ax.text(ShardBorderPos[(ID,"bottomleft")][0], ShardBorderPos[(ID,"bottomleft")][1], ID,
         horizontalalignment='right',
         verticalalignment='center',
-        transform=ax.transAxes,
         size=25)
 
     plt.axis('off')

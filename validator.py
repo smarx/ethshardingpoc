@@ -31,7 +31,8 @@ class ConsensusMessage:
         for m in self.justification:
             assert isinstance(m, ConsensusMessage), "expected justification to contain consensus messages"
             if m.height > max_height:
-                max_height = m.height
+                if m.estimate.shard_ID == self.estimate.shard_ID:
+                    max_height = m.height
 
         self.height = max_height + 1
 

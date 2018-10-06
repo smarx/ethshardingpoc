@@ -118,17 +118,14 @@ class Validator:
 
         return ret
 
-    def next_hop(self, block, target_shard_ID, last_shard_ID):
+    def next_hop(self, block, target_shard_ID):
         if block.shard_ID == target_shard_ID:
             return block.shard_ID
 
         ret = None
-        for neighbor_shard_ID in [block.parent_ID] + block.child_IDs:
-            if neighbor_shard_ID == last_shard_ID or neighbor_shard_ID is None:
-                continue
-
+        for neighbor_shard_ID in block.child_IDs:
             assert neighbor_shard_ID != block.shard_ID
-            candidate = self.next_hop(block.sources[neighbor_shard_ID], target_shard_ID, block.shard_ID)
+            candidate = self.next_hop(block.sources[neighbor_shard_ID], target_shard_ID)
             if candidate is not None:
                 assert ret is None
                 ret = neighbor_shard_ID
@@ -191,9 +188,11 @@ class Validator:
                 newly_received_payloads.add_message(ID, m)
 
                 if m.target_shard_ID != shard_ID:
-                    next_hop_ID = self.next_hop(prevblock, m.target_shard_ID, -1)
-                    assert next_hop_ID is not None
-                    assert next_hop_ID in [prevblock.parent_ID] + prevblock.child_IDs
+                    next_hop_ID = self.next_hop(prevblock, m.target_shard_ID)
+                    if next_hop_ID is not None:
+                        assert next_hop_ID in prevblock.child_IDs
+                    else:
+                        next_hop_ID = prevblock.parent_ID
                     new_sent_messages.log[next_hop_ID].append(Message(fork_choice[next_hop_ID], m.TTL, m.target_shard_ID, m.payload))
                     
         # --------------------------------------------------------------------#
@@ -218,10 +217,12 @@ class Validator:
                     # one that sends a message that must be included by the base
                     # which already exists and therefore cannot include this message
                     if TTL > 0:
-                        next_hop_ID = self.next_hop(prevblock, ID, -1)
-                        assert next_hop_ID is not None
-                        assert next_hop_ID in [prevblock.parent_ID] + prevblock.child_IDs
-                        new_sent_messages.log[next_hop_ID].append(Message(fork_choice[next_hop_ID], TTL, ID, m.payload))
+                        first_hop_ID = self.next_hop(prevblock, ID)
+                        if first_hop_ID is not None:
+                            assert first_hop_ID in [prevblock.parent_ID] + prevblock.child_IDs
+                        else:
+                            first_hop_ID = prevblock.parent_ID
+                        new_sent_messages.log[first_hop_ID].append(Message(fork_choice[first_hop_ID], TTL, ID, m.payload))
                     else:
                         print("Warning: Not sending message because TTL == 0")
 

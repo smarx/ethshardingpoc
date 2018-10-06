@@ -72,8 +72,7 @@ class Block:
             sent_log = MessagesLog()
         if received_log is None:
             received_log = MessagesLog()
-        if sources is None:
-            sources = {ID: None for ID in SHARD_IDS}
+        assert sources is not None
 
         assert ID in SHARD_IDS, "expected shard ID"
         self.shard_ID = ID
@@ -87,13 +86,7 @@ class Block:
 
         if prevblock is None:
             self.height = 0
-            # TODO: this is where the tree structure is hardcoded. somewhere better?
-            if ID == 0:
-                self.parent_ID = None
-                self.child_IDs = [1,2]
-            else:
-                self.parent_ID = 0
-                self.child_IDs = []
+            # this is a genesis block, the topology will be set immidiately after the creation
         else:
             self.height = self.prevblock.height + 1
             self.parent_ID = self.prevblock.parent_ID
@@ -218,6 +211,11 @@ class Block:
         new_received_messages = self.newly_received()
 
 
+        for key, value in list(new_sent_messages.items()) + list(new_received_messages.items()):
+            if len(value) and key not in [self.parent_ID, self.shard_ID] + self.child_IDs:
+                return False, "Block on shard %s has sent or received message to shard %s which is not its neighbor or itself" % (self.shard_ID, key)
+
+
         # SHARD ID VALIDITY CONDITIONS
 
         # check that the prev block is on the same shard as this block
@@ -225,6 +223,11 @@ class Block:
             return False, "prevblock should be on same shard as this block"
 
         for ID in SHARD_IDS:
+            # messages can only come from / go to neighboring shards
+            if len(new_sent_messages[ID]) or len(new_received_messages[ID]):
+                if ID not in self.child_IDs and ID != self.parent_ID:
+                    return False, "there's a sent or received message from shard %s which is neither parent not child of shard %s" % (ID, self.shard_ID)
+
             # bases for messages sent to shard i are on shard i
             for message in new_sent_messages[ID]:
                 if message.base.shard_ID != ID:
@@ -316,8 +319,8 @@ class Block:
                 # sources after bases
                 # ... easier to check than agreement between bases and sources,
                 # ... also easy for a block producer to enforce
+                source = self.sources[ID]
                 if len(self.prevblock.sent_log.log[ID]) > 0:
-                    source = self.sources[ID]
                     base = last_old_sent_message.base  # most recent base from prev block
                     if not source.is_in_chain(base):  # source is after ^^
                         return False, "expected bases to be in the chaing of sources -- error 1"
@@ -378,6 +381,26 @@ class Block:
                     # m1 from this shard that hasn't been received by m2.base, and is expired if...
                     if m1.base.height + m1.TTL <= m2.base.height:
                             return False, "expected sent messages to be received by the TTL"
+        # --------------------------------------------------------------------#
+
+
+        # ALL RECEIVED MESSASGES THAT DO NOT TARGET THIS SHARD MUST BE REROUTED
+        payloads_to_reroute = []
+        for ID in SHARD_IDS:
+            for message in new_received_messages[ID]:
+                if message.target_shard_ID != self.shard_ID:
+                    assert message.payload not in payloads_to_reroute
+                    payloads_to_reroute.append((message.target_shard_ID, message.TTL, message.payload))
+
+        for ID in SHARD_IDS:
+            for message in new_sent_messages[ID]:
+                key = (message.target_shard_ID, message.TTL, message.payload)
+                if key in payloads_to_reroute:
+                    payloads_to_reroute.remove(key)
+
+        if len(payloads_to_reroute):
+            return False, "%s messages were not rerouted" % len(payloads_to_reroute)
+                
         # --------------------------------------------------------------------#
 
         # made it!

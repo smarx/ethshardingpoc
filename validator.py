@@ -118,7 +118,26 @@ class Validator:
 
         return ret
 
-    def make_block(self, shard_ID, mempools, drain_amount, TTL=TTL_CONSTANT):
+    def next_hop(self, block, target_shard_ID, last_shard_ID):
+        if block.shard_ID == target_shard_ID:
+            return block.shard_ID
+
+        ret = None
+        for neighbor_shard_ID in [block.parent_ID] + block.child_IDs:
+            if neighbor_shard_ID == last_shard_ID or neighbor_shard_ID is None:
+                continue
+
+            assert neighbor_shard_ID != block.shard_ID
+            candidate = self.next_hop(block.sources[neighbor_shard_ID], target_shard_ID, block.shard_ID)
+            if candidate is not None:
+                assert ret is None
+                ret = neighbor_shard_ID
+                # break # <-- uncommenting would maintain correctness, but would disable asserting if multiple paths lead to the target_shard_ID
+
+        return ret
+
+    def make_block(self, shard_ID, mempools, drain_amount, genesis_blocks, TTL=TTL_CONSTANT):
+        genesis_blocks = self.genesis_blocks()
         # RUN FORK CHOICE RULE
         # will only have fork choices for parent and children
         fork_choice = self.fork_choice(shard_ID)
@@ -145,7 +164,7 @@ class Validator:
 
         # BUILD RECEIVED LOG WITH:
         received_log = MessagesLog()
-        sources = {ID : None for ID in SHARD_IDS}
+        sources = {ID : genesis_blocks[ID] for ID in SHARD_IDS}
         for ID in fork_choice.keys():
             if ID == shard_ID:
                 continue
@@ -159,6 +178,8 @@ class Validator:
 
         # PREP NEWLY RECEIVED PMESSAGES IN A RECEIVEDLOG FOR EVM:
         newly_received_messages = {}
+        new_sent_messages = MessagesLog()
+
         for ID in fork_choice.keys():
             previous_received_log_size = len(prevblock.received_log.log[ID])
             current_received_log_size = len(received_log.log[ID])
@@ -168,6 +189,13 @@ class Validator:
         for ID in fork_choice.keys():
             for m in newly_received_messages[ID]:
                 newly_received_payloads.add_message(ID, m)
+
+                if m.target_shard_ID != shard_ID:
+                    next_hop_ID = self.next_hop(prevblock, m.target_shard_ID, -1)
+                    assert next_hop_ID is not None
+                    assert next_hop_ID in [prevblock.parent_ID] + prevblock.child_IDs
+                    new_sent_messages.log[next_hop_ID].append(Message(fork_choice[next_hop_ID], m.TTL, m.target_shard_ID, m.payload))
+                    
         # --------------------------------------------------------------------#
 
 
@@ -176,21 +204,24 @@ class Validator:
         # this is where we have this function that produces the new vm state and the new outgoing payloads
         # new_vm_state, new_outgoing_payloads = apply_to_state(prevblock.vm_state, data, newly_received_payloads)
 
-        new_vm_state, new_outgoing_payloads = apply_to_state(prevblock.vm_state, data, newly_received_payloads)
+        new_vm_state, new_outgoing_payloads = apply_to_state(prevblock.vm_state, data, newly_received_payloads, genesis_blocks)
 
         # --------------------------------------------------------------------#
 
 
         # BUILD SENT LOG FROM NEW OUTGOING PAYLOADS
-        new_sent_messages = MessagesLog()
-        for ID in fork_choice.keys():
+        # by this time new_sent_messages might already have some messages from rerouting above
+        for ID in SHARD_IDS:
             if ID != shard_ID:
                 for m in new_outgoing_payloads.log[ID]:
                     # if TTL == 0, then we'll make an invalid block
                     # one that sends a message that must be included by the base
                     # which already exists and therefore cannot include this message
                     if TTL > 0:
-                        new_sent_messages.log[ID].append(Message(fork_choice[ID], TTL, ID, m.payload))
+                        next_hop_ID = self.next_hop(prevblock, ID, -1)
+                        assert next_hop_ID is not None
+                        assert next_hop_ID in [prevblock.parent_ID] + prevblock.child_IDs
+                        new_sent_messages.log[next_hop_ID].append(Message(fork_choice[next_hop_ID], TTL, ID, m.payload))
                     else:
                         print("Warning: Not sending message because TTL == 0")
 
@@ -202,13 +233,13 @@ class Validator:
 
         return Block(shard_ID, prevblock, new_txn_log, sent_log, received_log, sources, new_vm_state)
 
-    def make_new_consensus_message(self, shard_ID, mempools, drain_amount, TTL=TTL_CONSTANT):
+    def make_new_consensus_message(self, shard_ID, mempools, drain_amount, genesis_blocks, TTL=TTL_CONSTANT):
 
         assert shard_ID in SHARD_IDS, "expected shard ID"
         assert isinstance(drain_amount, int), "expected int"
         assert isinstance(TTL, int), "expected int"
         assert isinstance(mempools, dict), "expected dict"
-        new_block = self.make_block(shard_ID, mempools, drain_amount, TTL)
+        new_block = self.make_block(shard_ID, mempools, drain_amount, genesis_blocks, TTL)
         new_message = ConsensusMessage(new_block, self.name, copy.copy(self.consensus_messages))
         self.receive_consensus_message(new_message)
         return new_message

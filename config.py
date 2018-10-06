@@ -2,7 +2,7 @@ import random as rand
 from web3 import Web3
 from collections import defaultdict
 
-NUM_SHARDS = 3
+NUM_SHARDS = 6
 NUM_VALIDATORS = 18
 
 SHARD_IDS = list(range(NUM_SHARDS))
@@ -18,10 +18,11 @@ VALIDATOR_SHARD_ASSIGNMENT = {}
 SHARD_VALIDATOR_ASSIGNMENT = defaultdict(list)
 for v in VALIDATOR_NAMES:
     # TODO: Remove the +1. Put in to keep assignment the same.
-    shard = v // (NUM_VALIDATORS//len(SHARD_IDS) + 1)
+    shard = v // (NUM_VALIDATORS//len(SHARD_IDS))
     VALIDATOR_SHARD_ASSIGNMENT[v] = shard
     SHARD_VALIDATOR_ASSIGNMENT[shard].append(v)
 TTL_CONSTANT = 3
+print(SHARD_VALIDATOR_ASSIGNMENT)
 
 NUM_TRANSACTIONS = 50
 
@@ -34,11 +35,11 @@ REPORT_INTERVAL = 1
 PAUSE_LENGTH = 0.1
 
 # Instant broadcast
-FREE_INSTANT_BROADCAST = False
+FREE_INSTANT_BROADCAST = True
 
 # Validity check options
 VALIDITY_CHECKS_WARNING_OFF = True
-VALIDITY_CHECKS_OFF = True
+VALIDITY_CHECKS_OFF = False
 
 DEADBEEF = Web3.toChecksumAddress(hex(1271270613000041655817448348132275889066893754095))
 

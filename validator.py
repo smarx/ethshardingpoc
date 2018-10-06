@@ -185,9 +185,10 @@ class Validator:
         newly_received_payloads = MessagesLog()
         for ID in fork_choice.keys():
             for m in newly_received_messages[ID]:
-                newly_received_payloads.add_message(ID, m)
+                if m.target_shard_ID == shard_ID:
+                    newly_received_payloads.add_message(ID, m)
 
-                if m.target_shard_ID != shard_ID:
+                else:
                     next_hop_ID = self.next_hop(prevblock, m.target_shard_ID)
                     if next_hop_ID is not None:
                         assert next_hop_ID in prevblock.child_IDs

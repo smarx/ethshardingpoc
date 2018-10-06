@@ -52,9 +52,9 @@ for i in range(NUM_ROUNDS):
     rand_ID = random.choice(SHARD_IDS)
     next_proposer = rand.choice(SHARD_VALIDATOR_ASSIGNMENT[rand_ID])
 
-    if next_proposer == 0:
-        i -= 1  # skip but don't waste the round!
-        continue
+    while next_proposer == 0:
+        rand_ID = random.choice(SHARD_IDS)
+        next_proposer = rand.choice(SHARD_VALIDATOR_ASSIGNMENT[rand_ID])
 
     # MAKE CONSENSUS MESSAGE
     new_message = validators[next_proposer].make_new_consensus_message(rand_ID, mempools, drain_amount=MEMPOOL_DRAIN_RATE)

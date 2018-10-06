@@ -86,17 +86,17 @@ def sharded_fork_choice(starting_blocks, blocks, weighted_blocks, parent_shard_f
             continue
 
         # FILTER BLOCKS THAT DONT AGREE WITH MOST RECENT SOURCE
-        if parent_shard_fork_choice.received_log.sources[b.shard_ID] is not None:
-            if not parent_shard_fork_choice.received_log.sources[b.shard_ID].is_in_chain(b):
-                if not b.is_in_chain(parent_shard_fork_choice.received_log.sources[b.shard_ID]):
+        if parent_shard_fork_choice.sources[b.shard_ID] is not None:
+            if not parent_shard_fork_choice.sources[b.shard_ID].is_in_chain(b):
+                if not b.is_in_chain(parent_shard_fork_choice.sources[b.shard_ID]):
                     block_filter.append(b)
                     continue
         # --------------------------------------------------------------------#
 
 
         # FILTER BLOCKS WITH ORPHANED SOURCES
-        if b.received_log.sources[parent_ID] is not None:
-            if not parent_shard_fork_choice.is_in_chain(b.received_log.sources[parent_ID]):
+        if b.sources[parent_ID] is not None:
+            if not parent_shard_fork_choice.is_in_chain(b.sources[parent_ID]):
                 block_filter.append(b)
                 continue
         # --------------------------------------------------------------------#

@@ -21,36 +21,38 @@ class MessagePayload:
 
 
 class Message:
-    def __init__(self, base, TTL, payload):
+    def __init__(self, base, TTL, target_shard_ID, payload):
         assert isinstance(base, Block)
         assert base.is_valid(), "expected block to be valid"
         self.base = base
         assert isinstance(TTL, int), "expected integer time-to-live"
         self.TTL = TTL
+        assert target_shard_ID in SHARD_IDS, "expected shard ID"
+        self.target_shard_ID = target_shard_ID
         assert isinstance(payload, MessagePayload), "expected messagepayload format"
         self.payload = payload
 
 
-class SentLog:
+class MessagesLog:
     def __init__(self):
         self.log = dict.fromkeys(SHARD_IDS)
         for ID in SHARD_IDS:
             self.log[ID] = []
 
-    def add_sent_message(self, shard_ID, message):
+    def add_message(self, shard_ID, message):
         assert shard_ID in SHARD_IDS, "expected shard ID"
         assert isinstance(message, Message), "expected message"
         self.log[shard_ID].append(message)
 
-    def add_sent_messages(self, shard_IDs, messages):
+    def add_messages(self, shard_IDs, messages):
         for i in range(len(shard_IDs)):
-            self.add_sent_message(shard_IDs[i], messages[i])
+            self.add_message(shard_IDs[i], messages[i])
         return self
 
-    def append_SentLog(self, log):
-        assert isinstance(log, SentLog), "expected sent log"
+    def append_MessagesLog(self, log):
+        assert isinstance(log, MessagesLog), "expected messages log"
 
-        new_log = SentLog()
+        new_log = MessagesLog()
 
         for ID in SHARD_IDS:
             for l in self.log[ID]:
@@ -64,30 +66,14 @@ class SentLog:
 
 
 
-class ReceivedLog:
-    def __init__(self):
-        self.sources = { ID: None for ID in SHARD_IDS }
-        self.log = { ID: [] for ID in SHARD_IDS }
-
-    def add_received_message(self, shard_id, message):
-        assert shard_id in SHARD_IDS, "expected shard ID"
-        assert isinstance(message, Message), "expected message"
-        self.log[shard_id].append(message)
-
-    # also adds sources, a map from SHARD IDS to blocks
-    def add_received_messages(self, sources, shard_ids, messages):
-        self.sources = sources
-        for i in range(len(shard_ids)):
-            self.add_received_message(shard_IDs[i], messages[i])
-        return self
-
-
 class Block:
-    def __init__(self, ID, prevblock=None, txn_log=[], sent_log=None, received_log=None, vm_state=genesis_state):
+    def __init__(self, ID, prevblock=None, txn_log=[], sent_log=None, received_log=None, sources=None, vm_state=genesis_state):
         if sent_log is None:
-            sent_log = SentLog()
+            sent_log = MessagesLog()
         if received_log is None:
-            received_log = ReceivedLog()
+            received_log = MessagesLog()
+        if sources is None:
+            sources = {ID: None for ID in SHARD_IDS}
 
         assert ID in SHARD_IDS, "expected shard ID"
         self.shard_ID = ID
@@ -95,6 +81,7 @@ class Block:
         self.txn_log = txn_log
         self.sent_log = sent_log
         self.received_log = received_log
+        self.sources = sources
         self.vm_state = vm_state
         self.hash = rand.randint(1, 10000000)
 
@@ -213,9 +200,9 @@ class Block:
         if self.prevblock is not None:
             if not isinstance(self.prevblock, Block):
                 return False, "expected prevblock to be a block"
-        if not isinstance(self.sent_log, SentLog):
+        if not isinstance(self.sent_log, MessagesLog):
             return False, "expected sent log"
-        if not isinstance(self.received_log, ReceivedLog):
+        if not isinstance(self.received_log, MessagesLog):
             return False, "expected received_log"
         # if not isinstance(self.VM_state, EVM_State):
         #    return False, "expected an EVM State"
@@ -249,8 +236,8 @@ class Block:
                     return False, "received message with base on different shard"
 
             # sources of messages received from shard i are on shard i
-            if self.received_log.sources[ID] is not None:
-                if self.received_log.sources[ID].shard_ID != ID:
+            if self.sources[ID] is not None:
+                if self.sources[ID].shard_ID != ID:
                     return False, "source for shard i on shard j != i"
         # --------------------------------------------------------------------#
 
@@ -321,16 +308,16 @@ class Block:
                         return False, "expected bases to be monotonic -- error 2"
 
                 # sources are montonic
-                if self.received_log.sources[ID] is not None:
-                    if self.prevblock.received_log.sources[ID] is not None:
-                        if not self.received_log.sources[ID].is_in_chain(self.prevblock.received_log.sources[ID]):
+                if self.sources[ID] is not None:
+                    if self.prevblock.sources[ID] is not None:
+                        if not self.sources[ID].is_in_chain(self.prevblock.sources[ID]):
                             return False, "expected sources to be monotonic"
 
                 # sources after bases
                 # ... easier to check than agreement between bases and sources,
                 # ... also easy for a block producer to enforce
                 if len(self.prevblock.sent_log.log[ID]) > 0:
-                    source = self.received_log.sources[ID]
+                    source = self.sources[ID]
                     base = last_old_sent_message.base  # most recent base from prev block
                     if not source.is_in_chain(base):  # source is after ^^
                         return False, "expected bases to be in the chaing of sources -- error 1"
@@ -346,9 +333,9 @@ class Block:
         # SOURCE SYNCHRONICITY CONDITIONS
         for ID in SHARD_IDS:
 
-            if self.received_log.sources[ID] is not None:
+            if self.sources[ID] is not None:
 
-                source = self.received_log.sources[ID]
+                source = self.sources[ID]
 
                 # check that the received messages are sent by the source
                 for i in range(len(self.received_log.log[ID])):  # warning: inefficient

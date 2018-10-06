@@ -132,7 +132,7 @@ for i in range(NUM_ROUNDS):
 
         # VISUALIZATION
         plt.clf()
-        fork_choice = watcher.fork_choice()
+        fork_choice = watcher.all_fork_choices()
         SHARD_SPACING_CONSTANT = 3
 
         ValidatorDashes = nx.Graph();

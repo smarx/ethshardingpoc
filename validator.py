@@ -82,27 +82,33 @@ class Validator:
             blocks.append(m.estimate)
         return blocks
 
-    def fork_choice(self, parent_ID=SHARD_IDS[0], child_IDs=SHARD_IDS[1:]):
-        # the blocks in the view are the genesis blocks and blocks from consensus messages
-        blocks = self.get_blocks_from_consensus_messages()
-
-        #  maybe this should be a parameter, but it's not so bad
+    # TODO: memoize? this shouldn't change
+    def genesis_blocks(self):
         genesis_blocks = {}
         for m in self.consensus_messages:
             if m.sender == 0:
                 genesis_blocks[m.estimate.shard_ID] = m.estimate
+        return genesis_blocks
 
-
+    def all_fork_choices(self):
+        blocks = self.get_blocks_from_consensus_messages()
         weighted_blocks = self.get_weighted_blocks()
+        genesis_blocks = self.genesis_blocks()
+        return {shard_ID:fork_choice(genesis_blocks[shard_ID], blocks, weighted_blocks) for shard_ID in genesis_blocks}
 
-        # THE PARENT SHARD FORK CHOICE IS INDEPENDENT OF THE CHILD SHARD
-        parent_shard_fork_choice = fork_choice(genesis_blocks[parent_ID], blocks, weighted_blocks)
-        return sharded_fork_choice(genesis_blocks, blocks, weighted_blocks, parent_shard_fork_choice, child_IDs)
+    def fork_choice(self, shard_ID):
+        # the blocks in the view are the genesis blocks and blocks from consensus messages
+        blocks = self.get_blocks_from_consensus_messages()
+        weighted_blocks = self.get_weighted_blocks()
+        genesis_blocks = self.genesis_blocks()
+
+        parent_shard_fork_choice = fork_choice(genesis_blocks[shard_ID], blocks, weighted_blocks)
+        return sharded_fork_choice(genesis_blocks, blocks, weighted_blocks, parent_shard_fork_choice, parent_shard_fork_choice.child_IDs)
 
     def make_block(self, shard_ID, mempools, drain_amount, TTL=TTL_CONSTANT):
         # RUN FORK CHOICE RULE
         # will only have fork choices for parent and children
-        fork_choice = self.fork_choice()
+        fork_choice = self.fork_choice(shard_ID)
         # --------------------------------------------------------------------#
 
 

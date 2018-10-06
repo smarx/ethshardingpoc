@@ -2,6 +2,7 @@ import json
 from web3 import Web3
 from config import NUM_TRANSACTIONS
 from config import DEADBEEF
+from config import SHARD_IDS
 
 web3 = Web3()
 
@@ -33,8 +34,8 @@ def format_transaction(tx, signed):
 
 
 # Alice sends cross shard transactions
-def gen_cross_shard_tx(nonce):
-    cross_shard_tx = contract.functions.send(1, 300000, DEADBEEF, bytes(0)).buildTransaction({ "gas": 3000000, "gasPrice": "0x2", "nonce": hex(nonce), "value": 1})
+def gen_cross_shard_tx(nonce, shard_ID):
+    cross_shard_tx = contract.functions.send(shard_ID, 300000, DEADBEEF, bytes(0)).buildTransaction({ "gas": 3000000, "gasPrice": "0x2", "nonce": hex(nonce), "value": 1})
 
     cross_shard_tx_signed = web3.eth.account.signTransaction(cross_shard_tx, alice_key)
     cross_shard_tx_formatted = format_transaction(cross_shard_tx, cross_shard_tx_signed)
@@ -83,6 +84,6 @@ def gen_alice_and_bob_tx():
     tx = []
     for x in range(0, NUM_TRANSACTIONS):
         # tx.append(gen_in_shard_tx(hex(x)))
-        tx.append(gen_cross_shard_tx(x))
+        tx.append(gen_cross_shard_tx(x, SHARD_IDS[x%len(SHARD_IDS)]))
     # print(tx[0])
     return tx

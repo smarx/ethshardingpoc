@@ -153,8 +153,6 @@ class Validator:
 
         new_vm_state, new_outgoing_payloads = apply_to_state(prevblock.vm_state, data, newly_received_payloads)
 
-        if shard_ID == 1:
-            new_outgoing_payloads.log[0], new_outgoing_payloads.log[1] = new_outgoing_payloads.log[1], new_outgoing_payloads.log[0]
         # --------------------------------------------------------------------#
 
 

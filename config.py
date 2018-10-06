@@ -1,5 +1,6 @@
 import random as rand
 from web3 import Web3
+from collections import defaultdict
 
 SHARD_IDS = [0, 1]
 NUM_VALIDATORS = 10
@@ -10,16 +11,14 @@ VALIDATOR_WEIGHTS = {}
 for v in VALIDATOR_NAMES:
     VALIDATOR_WEIGHTS[v] = rand.uniform(5, 25)
 
-VALIDATOR_SHARD_ASSIGNMENT = {}
-SHARD_VALIDATOR_ASSIGNMENT = {0: [], 1: []}
-for v in VALIDATOR_NAMES:
-    if v <= NUM_VALIDATORS/2:
-        VALIDATOR_SHARD_ASSIGNMENT[v] = 0
-        SHARD_VALIDATOR_ASSIGNMENT[0].append(v)
-    else:
-        VALIDATOR_SHARD_ASSIGNMENT[v] = 1
-        SHARD_VALIDATOR_ASSIGNMENT[1].append(v)
 
+VALIDATOR_SHARD_ASSIGNMENT = {}
+SHARD_VALIDATOR_ASSIGNMENT = defaultdict(list)
+for v in VALIDATOR_NAMES:
+    # TODO: Remove the +1. Put in to keep assignment the same.
+    shard = v // (NUM_VALIDATORS//len(SHARD_IDS) + 1)
+    VALIDATOR_SHARD_ASSIGNMENT[v] = shard
+    SHARD_VALIDATOR_ASSIGNMENT[shard].append(v)
 TTL_CONSTANT = 3
 
 NUM_TRANSACTIONS = 50

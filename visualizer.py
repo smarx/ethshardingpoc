@@ -339,8 +339,18 @@ def report(watcher):
     nx.draw_networkx_edges(ShardMessagesOriginGraph, shard_messagesPos, width=6, style='dotted')
 
     # CROSS SHARD MESSAGE RECEIVE ARROWS
-    OrphanedReceivedMessagesGraph = nx.DiGraph();
-    AcceptedReceivedMessagesGraph = nx.DiGraph();
+    RECEIVED_GRAPH_COLORS = ['#600787', '#078760', '#876007', '#870760', '#076087', '#608707', '#FF6633', '#FFB399', '#FF33FF', '#FFFF99', '#00B3E6', 
+		  '#E6B333', '#3366E6', '#999966', '#99FF99', '#B34D4D',
+		  '#80B300', '#809900', '#E6B3B3', '#6680B3', '#66991A', 
+		  '#FF99E6', '#CCFF1A', '#FF1A66', '#E6331A', '#33FFCC',
+		  '#66994D', '#B366CC', '#4D8000', '#B33300', '#CC80CC', 
+		  '#66664D', '#991AFF', '#E666FF', '#4DB3FF', '#1AB399',
+		  '#E666B3', '#33991A', '#CC9999', '#B3B31A', '#00E680', 
+		  '#4D8066', '#809980', '#E6FF80', '#1AFF33', '#999933',
+		  '#FF3380', '#CCCC00', '#66E64D', '#4D80CC', '#9900B3', 
+'#E64D66', '#4DB380', '#FF4D4D', '#99E6E6', '#6666FF']
+    OrphanedReceivedMessagesGraph = [nx.DiGraph() for _ in RECEIVED_GRAPH_COLORS];
+    AcceptedReceivedMessagesGraph = [nx.DiGraph() for _ in RECEIVED_GRAPH_COLORS];
 
     for m in displayable_messages:
         neighbor_shards = []
@@ -349,14 +359,16 @@ def report(watcher):
         for ID in m.estimate.child_IDs:
             neighbor_shards.append(ID)
 
-        OrphanedReceivedMessagesGraph.add_node(m)
-        AcceptedReceivedMessagesGraph.add_node(m)
+        for i in range(len(RECEIVED_GRAPH_COLORS)):
+            OrphanedReceivedMessagesGraph[i].add_node(m)
+            AcceptedReceivedMessagesGraph[i].add_node(m)
 
         for ID in neighbor_shards:
             for new_received_message in m.estimate.newly_received()[ID]:
 
-                OrphanedReceivedMessagesGraph.add_node(new_received_message)
-                AcceptedReceivedMessagesGraph.add_node(new_received_message)
+                for i in range(len(RECEIVED_GRAPH_COLORS)):
+                    OrphanedReceivedMessagesGraph[i].add_node(new_received_message)
+                    AcceptedReceivedMessagesGraph[i].add_node(new_received_message)
 
                 shard_messagesPos[new_received_message] = messagesPos[m]
 
@@ -367,19 +379,22 @@ def report(watcher):
                 new_shard_message_origin = consensus_message_by_shard_message[new_received_message]
                 sending_block = new_shard_message_origin.estimate
 
+                COLOR_ID = hash((new_received_message.TTL, new_received_message.payload, new_received_message.target_shard_ID)) % len(RECEIVED_GRAPH_COLORS)
+
                 if fork_choice[m.estimate.shard_ID].is_in_chain(m.estimate):
                     if fork_choice[sending_block.shard_ID].is_in_chain(sending_block):
                         print("m.estimate", m.estimate)
                         print("sending_block", sending_block)
                         print("fork_choice[m.estimate.shard_ID]", fork_choice[m.estimate.shard_ID])
                         print("fork_choice[sending_block.shard_ID]", fork_choice[sending_block.shard_ID])
-                        AcceptedReceivedMessagesGraph.add_edge(new_shard_message_origin, m)
+                        AcceptedReceivedMessagesGraph[COLOR_ID].add_edge(new_shard_message_origin, m)
                         continue
 
-                OrphanedReceivedMessagesGraph.add_edge(new_shard_message_origin, new_received_message)
+                OrphanedReceivedMessagesGraph[COLOR_ID].add_edge(new_shard_message_origin, new_received_message)
 
-    nx.draw_networkx_edges(AcceptedReceivedMessagesGraph, shard_messagesPos, edge_color='#600787', arrowsize=50, arrowstyle='->', width=6)
-    nx.draw_networkx_edges(OrphanedReceivedMessagesGraph, shard_messagesPos, edge_color='#600787', arrowsize=20, arrowstyle='->', width=1.25)
+    for i, clr in enumerate(RECEIVED_GRAPH_COLORS):
+        nx.draw_networkx_edges(AcceptedReceivedMessagesGraph[i], shard_messagesPos, edge_color=clr, arrowsize=50, arrowstyle='->', width=6)
+        nx.draw_networkx_edges(OrphanedReceivedMessagesGraph[i], shard_messagesPos, edge_color=clr, arrowsize=20, arrowstyle='->', width=1.25)
 
     ax = plt.axes()
     # FLOATING TEXT

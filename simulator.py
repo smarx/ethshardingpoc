@@ -22,24 +22,11 @@ for ID in SHARD_IDS:
 
 for ID in SHARD_IDS:
     GENESIS_BLOCKS[ID].sources = {ID : GENESIS_BLOCKS[ID] for ID in SHARD_IDS}
-    # TODO: this is where the tree structure is hardcoded. somewhere better?
-    if ID == 0:
-        GENESIS_BLOCKS[ID].parent_ID = None
-        GENESIS_BLOCKS[ID].child_IDs = [1,2]
-    elif ID == 1:
-        GENESIS_BLOCKS[ID].parent_ID = 0
-        GENESIS_BLOCKS[ID].child_IDs = [3, 4]
-    elif ID == 2:
-        GENESIS_BLOCKS[ID].parent_ID = 0
-        GENESIS_BLOCKS[ID].child_IDs = [5]
-    elif ID in [3, 4]:
-        GENESIS_BLOCKS[ID].parent_ID = 1
-        GENESIS_BLOCKS[ID].child_IDs = []
-    elif ID == 5:
-        GENESIS_BLOCKS[ID].parent_ID = 2
-        GENESIS_BLOCKS[ID].child_IDs = []
-    else:
-        assert False
+    GENESIS_BLOCKS[ID].parent_ID = None
+    for _ in SHARD_IDS:
+        if ID in INITIAL_TOPOLOGY[_]:
+            GENESIS_BLOCKS[ID].parent_ID = _
+    GENESIS_BLOCKS[ID].child_IDs = INITIAL_TOPOLOGY[ID]
 
 validators = {}
 for name in VALIDATOR_NAMES:

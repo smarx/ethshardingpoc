@@ -117,13 +117,19 @@ class Validator:
 
         shard_sequence = []
         for i in range(len(backwards_shard_sequence)):
-            shard_sequence.append(backwards_shard_sequence[-i])
+            shard_sequence.append(backwards_shard_sequence[len(backwards_shard_sequence) - 1 - i])
+
+        for i in range(len(backwards_shard_sequence) - 1):
+            assert shard_sequence[i] == genesis_blocks[shard_sequence[i+1]].parent_ID, "expected chain of parents!"
+
 
         # FORK CHOICE HAPPENS HERE:
         next_fork_choice = root_choice
         for i in range(len(backwards_shard_sequence)):
             next_fork_choice = sharded_fork_choice(shard_sequence[i], genesis_blocks, blocks, weighted_blocks, next_fork_choice)
 
+        print("shard_sequence", shard_sequence)
+        print("shard_ID", next_fork_choice.shard_ID, shard_ID)
         assert next_fork_choice.shard_ID == shard_ID, "expected fork choice to be on requested shard"
 
         return next_fork_choice
@@ -152,14 +158,14 @@ class Validator:
 
     def make_block(self, shard_ID, mempools, drain_amount, genesis_blocks, TTL=TTL_CONSTANT):
         genesis_blocks = self.genesis_blocks()
-        # RUN FORK CHOICE RULE
+        # RUN FORK CHOICE RULE ON SELF
         # will only have fork choices for parent and children
-        fork_choice = self.make_all_fork_choices()
+        my_fork_choice = self.make_fork_choice(shard_ID)
         # --------------------------------------------------------------------#
 
 
         # GET PREVBLOCK POINTER FROM FORK CHOICE
-        prevblock = fork_choice[shard_ID]
+        prevblock = my_fork_choice
         # --------------------------------------------------------------------#
 
 
@@ -176,25 +182,27 @@ class Validator:
         # --------------------------------------------------------------------#
 
 
+        neighbor_shard_IDs = []
+        if my_fork_choice.parent_ID is not None:
+            neighbor_shard_IDs.append(my_fork_choice.parent_ID)
+        for IDs in my_fork_choice.child_IDs:
+            neighbor_shard_IDs.append(IDs)
+
+
         # BUILD RECEIVED LOG WITH:
         received_log = MessagesLog()
         sources = {ID : genesis_blocks[ID] for ID in SHARD_IDS}
-        for ID in fork_choice.keys():
+        for ID in neighbor_shard_IDs:
             if ID == shard_ID:
                 continue
 
+            neighbor_fork_choice = self.make_fork_choice(ID)
             # SOURCES = FORK CHOICE (except for self)
-            sources[ID] = fork_choice[ID]
+            sources[ID] = neighbor_fork_choice
             # RECEIVED = SENT MESSAGES FROM FORK CHOICE
-            received_log.log[ID] = fork_choice[ID].sent_log.log[shard_ID]
+            received_log.log[ID] = neighbor_fork_choice.sent_log.log[shard_ID]
         # --------------------------------------------------------------------#
 
-        genesis_blocks = self.genesis_blocks()
-        neighbor_shard_IDs = []
-        if genesis_blocks[shard_ID].parent_ID is not None:
-            neighbor_shard_IDs.append(genesis_blocks[shard_ID].parent_ID)
-        for ID in genesis_blocks[shard_ID].child_IDs:
-            neighbor_shard_IDs.append(ID)
 
         # PREP NEWLY RECEIVED PMESSAGES IN A RECEIVEDLOG FOR EVM:
         newly_received_messages = {}
@@ -216,8 +224,8 @@ class Validator:
                         assert next_hop_ID in prevblock.child_IDs
                     else:
                         next_hop_ID = prevblock.parent_ID
-                    new_sent_messages.log[next_hop_ID].append(Message(fork_choice[next_hop_ID], m.TTL, m.target_shard_ID, m.payload))
-                    
+                    new_sent_messages.log[next_hop_ID].append(Message(self.make_fork_choice(next_hop_ID), m.TTL, m.target_shard_ID, m.payload))
+
         # --------------------------------------------------------------------#
 
 
@@ -245,7 +253,7 @@ class Validator:
                             assert first_hop_ID in [prevblock.parent_ID] + prevblock.child_IDs
                         else:
                             first_hop_ID = prevblock.parent_ID
-                        new_sent_messages.log[first_hop_ID].append(Message(fork_choice[first_hop_ID], TTL, ID, m.payload))
+                        new_sent_messages.log[first_hop_ID].append(Message(self.make_fork_choice(first_hop_ID), TTL, ID, m.payload))
                     else:
                         print("Warning: Not sending message because TTL == 0")
 

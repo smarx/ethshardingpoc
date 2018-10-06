@@ -129,7 +129,7 @@ def report(watcher):
 
     shard_display_height = (DISPLAY_HEIGHT - 2*DISPLAY_MARGIN - (num_layers - 1)*SHARD_Y_SPACING)/num_layers
 
-    ShardBorderPoS = {}
+    ShardBorderPos = {}
     for h in range(num_layers):
         y_top = DISPLAY_MARGIN + i*(shard_display_height + SHARD_Y_SPACING)
         y_bottom = y_top + shard_display_height
@@ -149,13 +149,13 @@ def report(watcher):
             x_left = DISPLAY_MARGIN + i*(shard_display_width_by_height[h] + SHARD_X_SPACING)
             x_right = x_left + shard_display_width_by_height[h]
 
-            ShardBorderPoS[(shard_ID, "topleft")] = (x_left, y_top)
-            ShardBorderPoS[(shard_ID, "topright")] = (x_right, y_top)
-            ShardBorderPoS[(shard_ID, "bottomleft")] = (x_left, y_bottom)
-            ShardBorderPoS[(shard_ID, "bottomright")] = (x_right, y_bottom)
+            ShardBorderPos[(shard_ID, "topleft")] = (x_left, y_top)
+            ShardBorderPos[(shard_ID, "topright")] = (x_right, y_top)
+            ShardBorderPos[(shard_ID, "bottomleft")] = (x_left, y_bottom)
+            ShardBorderPos[(shard_ID, "bottomright")] = (x_right, y_bottom)
 
-    nx.draw_networkx_nodes(ShardBorder, ShardBorderPoS, node_size=0)
-    nx.draw_networkx_edges(ShardBorder, ShardBorderPoS, width=1)
+    nx.draw_networkx_nodes(ShardBorder, ShardBorderPos, node_size=0)
+    nx.draw_networkx_edges(ShardBorder, ShardBorderPos, width=1)
 
 
     # VALIDATOR LINES
@@ -170,8 +170,8 @@ def report(watcher):
     validator_left_x_coordinate = {}
     ValidatorLinePoS = {}
     for ID in SHARD_IDS:
-        x_left = ShardBorderPoS[(ID, "topleft")][0] + DISPLAY_MARGIN
-        x_right = ShardBorderPoS[(ID, "topright")][0] - DISPLAY_MARGIN
+        x_left = ShardBorderPos[(ID, "topleft")][0] + DISPLAY_MARGIN
+        x_right = ShardBorderPos[(ID, "topright")][0] - DISPLAY_MARGIN
 
 
         num_validators = len(SHARD_VALIDATOR_ASSIGNMENT[ID])
@@ -181,7 +181,7 @@ def report(watcher):
             v = SHARD_VALIDATOR_ASSIGNMENT[ID][i]
             relative_validator_display_height = (i + 1)*validator_y_spacing
 
-            validator_y_coordinate[v] = ShardBorderPoS[(ID, "topleft")][1] + shard_display_height*relative_validator_display_height
+            validator_y_coordinate[v] = ShardBorderPos[(ID, "topleft")][1] + shard_display_height*relative_validator_display_height
             validator_left_x_coordinate[v] = x_left
 
             y = validator_y_coordinate[v]
@@ -257,8 +257,8 @@ def report(watcher):
         if m.sender != 0:
             messagesPos[m] = (validator_left_x_coordinate[m.sender] + xoffset, validator_y_coordinate[m.sender])
         else:
-            x = ShardBorderPoS[(m.estimate.shard_ID, "topleft")][0] + DISPLAY_MARGIN
-            y = (ShardBorderPoS[(m.estimate.shard_ID, "topleft")][1] + ShardBorderPoS[(m.estimate.shard_ID, "bottomleft")][1])/2
+            x = ShardBorderPos[(m.estimate.shard_ID, "topleft")][0] + DISPLAY_MARGIN
+            y = (ShardBorderPos[(m.estimate.shard_ID, "topleft")][1] + ShardBorderPos[(m.estimate.shard_ID, "bottomleft")][1])/2
             messagesPos[m] = (x, y)
 
 
@@ -381,6 +381,14 @@ def report(watcher):
     nx.draw_networkx_edges(AcceptedReceivedMessagesGraph, shard_messagesPos, edge_color='#600787', arrowsize=50, arrowstyle='->', width=6)
     nx.draw_networkx_edges(OrphanedReceivedMessagesGraph, shard_messagesPos, edge_color='#600787', arrowsize=20, arrowstyle='->', width=1.25)
 
+    ax = plt.axes()
+    # FLOATING TEXT
+    for ID in SHARD_IDS:
+        ax.text(ShardBorderPos[(ID,"bottomleft")][0]/(DISPLAY_WIDTH + 0.00001), ShardBorderPos[(ID,"bottomleft")][1]/(DISPLAY_HEIGHT + 0.00001), ID,
+        horizontalalignment='right',
+        verticalalignment='center',
+        transform=ax.transAxes,
+        size=25)
 
     plt.axis('off')
     plt.draw()
@@ -388,14 +396,7 @@ def report(watcher):
 
 
 '''
-    ax = plt.axes()
-    # FLOATING TEXT
-    ax.text(0, 0.2, 'child shard',
-    horizontalalignment='right',
-    verticalalignment='center',
-    rotation='vertical',
-    transform=ax.transAxes,
-    size=25)
+
 
     # FLOATING TEXT
     ax.text(0, 0.2, 'child shard',

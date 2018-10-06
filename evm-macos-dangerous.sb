@@ -1,0 +1,16 @@
+(version 1)
+(deny default)
+
+(allow file-read-data file-read-metadata
+  (regex
+    #"^/System/Library"
+    #"^/usr/lib"
+    #"^/dev/stdin"
+    #"^/dev/fd/0"
+  )
+)
+
+(allow mach* sysctl-read)
+
+(allow process-exec (regex "evm-macos-dangerous"))
+

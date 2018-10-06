@@ -66,7 +66,8 @@ for i in range(NUM_ROUNDS):
 
     if FREE_INSTANT_BROADCAST:
         for v in VALIDATOR_NAMES:
-            validators[v].receive_consensus_message(new_message)
+            if v != 0:
+                validators[v].receive_consensus_message(new_message)
     else:
         # MAKE NEW MESSAGE VIEWABLE
         for v in VALIDATOR_NAMES:

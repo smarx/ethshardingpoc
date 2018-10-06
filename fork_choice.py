@@ -141,7 +141,4 @@ def sharded_fork_choice(starting_blocks, blocks, weighted_blocks, parent_shard_f
 
 
     # CALCULATE CHILD FORK CHOICE (FILTERED GHOST)
-    ret = {parent_ID: parent_shard_fork_choice}
-    for child_ID in child_IDs:
-        ret[child_ID] = fork_choice(starting_blocks[child_ID], blocks, weighted_blocks, block_filter)
-    return ret
+    return {child_ID:fork_choice(starting_blocks[child_ID], blocks, weighted_blocks, block_filter) for child_ID in child_IDs}

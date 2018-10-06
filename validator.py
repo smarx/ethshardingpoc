@@ -102,8 +102,20 @@ class Validator:
         weighted_blocks = self.get_weighted_blocks()
         genesis_blocks = self.genesis_blocks()
 
-        parent_shard_fork_choice = fork_choice(genesis_blocks[shard_ID], blocks, weighted_blocks)
-        return sharded_fork_choice(genesis_blocks, blocks, weighted_blocks, parent_shard_fork_choice, parent_shard_fork_choice.child_IDs)
+        ret = {}
+        ret[shard_ID] = fork_choice(genesis_blocks[shard_ID], blocks, weighted_blocks)
+
+        # get parent fork choice
+        parent_ID = ret[shard_ID].parent_ID
+        if parent_ID is not None:
+            ret[parent_ID] = fork_choice(genesis_blocks[parent_ID], blocks, weighted_blocks)
+
+        # get children fork choices
+        children = sharded_fork_choice(genesis_blocks, blocks, weighted_blocks, ret[shard_ID], ret[shard_ID].child_IDs)
+        for c in children:
+            ret[c] = children[c]
+
+        return ret
 
     def make_block(self, shard_ID, mempools, drain_amount, TTL=TTL_CONSTANT):
         # RUN FORK CHOICE RULE

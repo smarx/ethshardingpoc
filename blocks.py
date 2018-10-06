@@ -100,8 +100,17 @@ class Block:
 
         if prevblock is None:
             self.height = 0
+            # TODO: this is where the tree structure is hardcoded. somewhere better?
+            if ID == 0:
+                self.parent_ID = None
+                self.child_IDs = [1,2]
+            else:
+                self.parent_ID = 0
+                self.child_IDs = []
         else:
             self.height = self.prevblock.height + 1
+            self.parent_ID = self.prevblock.parent_ID
+            self.child_IDs = self.prevblock.child_IDs
 
         check = self.is_valid()
         if not check[0]:

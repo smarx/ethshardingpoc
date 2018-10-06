@@ -82,7 +82,7 @@ class Validator:
             blocks.append(m.estimate)
         return blocks
 
-    def fork_choice(self):
+    def fork_choice(self, parent_ID=SHARD_IDS[0], child_IDs=SHARD_IDS[1:]):
         # the blocks in the view are the genesis blocks and blocks from consensus messages
         blocks = self.get_blocks_from_consensus_messages()
 
@@ -96,13 +96,12 @@ class Validator:
         weighted_blocks = self.get_weighted_blocks()
 
         # THE PARENT SHARD FORK CHOICE IS INDEPENDENT OF THE CHILD SHARD
-        parent_shard_fork_choice = fork_choice(genesis_blocks[SHARD_IDS[0]], blocks, weighted_blocks)
-        child_IDs = SHARD_IDS[1:]
+        parent_shard_fork_choice = fork_choice(genesis_blocks[parent_ID], blocks, weighted_blocks)
         return sharded_fork_choice(genesis_blocks, blocks, weighted_blocks, parent_shard_fork_choice, child_IDs)
 
     def make_block(self, shard_ID, mempools, drain_amount, TTL=TTL_CONSTANT):
-
         # RUN FORK CHOICE RULE
+        # will only have fork choices for parent and children
         fork_choice = self.fork_choice()
         # --------------------------------------------------------------------#
 

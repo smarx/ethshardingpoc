@@ -135,6 +135,9 @@ class Block:
             print("---------------------------------------------------------")
         assert check[0], check[1]
 
+    def __str__(self):
+        return "Block(%d): shard_ID:%d height:%d" % (self.hash, self.shard_ID, self.height)
+
     def __eq__(self, block):
         return self.hash == block.hash
 

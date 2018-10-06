@@ -75,8 +75,8 @@ def sharded_fork_choice(starting_blocks, blocks, weighted_blocks):
 
 
     # one day this won't be hard coded:
-    parent_ID = 0
-    child_ID = 1
+    parent_ID = SHARD_IDS[0]
+    child_IDs = SHARD_IDS[1:]
 
 
     # THE PARENT SHARD FORK CHOICE IS INDEPENDENT OF THE CHILD SHARD
@@ -93,9 +93,9 @@ def sharded_fork_choice(starting_blocks, blocks, weighted_blocks):
             continue
 
         # FILTER BLOCKS THAT DONT AGREE WITH MOST RECENT SOURCE
-        if parent_shard_fork_choice.received_log.sources[child_ID] is not None:
-            if not parent_shard_fork_choice.received_log.sources[child_ID].is_in_chain(b):
-                if not b.is_in_chain(parent_shard_fork_choice.received_log.sources[child_ID]):
+        if parent_shard_fork_choice.received_log.sources[b.shard_ID] is not None:
+            if not parent_shard_fork_choice.received_log.sources[b.shard_ID].is_in_chain(b):
+                if not b.is_in_chain(parent_shard_fork_choice.received_log.sources[b.shard_ID]):
                     block_filter.append(b)
                     continue
         # --------------------------------------------------------------------#
@@ -148,6 +148,7 @@ def sharded_fork_choice(starting_blocks, blocks, weighted_blocks):
 
 
     # CALCULATE CHILD FORK CHOICE (FILTERED GHOST)
-    child_fork_choice = fork_choice(starting_blocks[child_ID], blocks, weighted_blocks, block_filter)
-
-    return {parent_ID: parent_shard_fork_choice, child_ID: child_fork_choice}
+    ret = {parent_ID: parent_shard_fork_choice}
+    for child_ID in child_IDs:
+        ret[child_ID] = fork_choice(starting_blocks[child_ID], blocks, weighted_blocks, block_filter)
+    return ret

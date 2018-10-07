@@ -60,7 +60,7 @@ else:
     for ID in SHARD_IDS:
         mempools[ID] = copy.copy(txs)
 
-#add_switch_message(1, 4, 3, 1)
+add_switch_message(1, 4, 3, 1)
 
 # GLOBAL VIEWABLES
 viewables = {}

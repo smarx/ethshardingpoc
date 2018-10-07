@@ -126,6 +126,10 @@ def report(watcher):
 
     # The position of the shards may vary, so we get them from the fork choice:
     fork_choice = watcher.make_all_fork_choices()
+    print("vvvvvvv")
+    for k, v in fork_choice.items():
+        print("%s => %s, %s, %s" % (k, v.parent_ID, v.child_IDs, v.routing_table))
+    print("^^^^^^^")
 
     fork_choice_by_shard_height = sort_blocks_by_shard_height(fork_choice)
 
@@ -304,9 +308,9 @@ def report(watcher):
 
 
         # this map will help us draw nodes from prevblocks, sources, etc
-        print("m.estimate.hash:  ", m.estimate.hash)
-        print("m.estimate:  ", m.estimate)
-        print("m.sender:  ", m.sender)
+        #print("m.estimate.hash:  ", m.estimate.hash)
+        #print("m.estimate:  ", m.estimate)
+        #print("m.sender:  ", m.sender)
         assert m.estimate not in block_to_message, "expected unique blocks"
         block_to_message[m.estimate] = m
 

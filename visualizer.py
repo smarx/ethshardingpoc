@@ -158,6 +158,30 @@ def report(watcher):
     nx.draw_networkx_edges(ShardBorder, ShardBorderPos, width=1)
 
 
+    # SHARD LAYOUT
+
+    ShardLayout = nx.Graph()
+    for ID in SHARD_IDS:
+        ShardLayout.add_node(ID)
+
+    for block in fork_choice.values():
+        if block.parent_ID is not None:
+            ShardLayout.add_edge(block.parent_ID, block.shard_ID)
+
+    labels = {}
+    ShardPos = {}
+    for shard_ID in SHARD_IDS:
+        x = (ShardBorderPos[(shard_ID, "topleft")][0] + ShardBorderPos[(shard_ID, "topright")][0])/2  - DISPLAY_HEIGHT
+        y = (ShardBorderPos[(shard_ID, "topleft")][1] + ShardBorderPos[(shard_ID, "bottomleft")][1])/2
+        ShardPos[shard_ID] = (x, y)
+        labels[shard_ID] = shard_ID
+
+    nx.draw_networkx_nodes(ShardLayout, ShardPos, node_color='#e6f3f7', edge_color='b', node_size=4000)
+    nx.draw_networkx_edges(ShardLayout, ShardPos, alpha=0.5, edge_color='b', width=10)
+    nx.draw_networkx_labels(ShardLayout,pos=ShardPos, label=labels, font_size=40)
+
+
+
     # VALIDATOR LINES
     ValidatorLines = nx.Graph();
     for v in VALIDATOR_NAMES:

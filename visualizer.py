@@ -161,9 +161,10 @@ def report(watcher):
     # VALIDATOR LINES
     ValidatorLines = nx.Graph();
     for v in VALIDATOR_NAMES:
-        ValidatorLines.add_node((v, "left"))
-        ValidatorLines.add_node((v, "right"))
-        ValidatorLines.add_edge((v, "left"), (v, "right"))  
+        if v != 0:
+            ValidatorLines.add_node((v, "left"))
+            ValidatorLines.add_node((v, "right"))
+            ValidatorLines.add_edge((v, "left"), (v, "right"))
 
 
     validator_y_coordinate = {}

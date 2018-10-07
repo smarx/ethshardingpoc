@@ -118,8 +118,11 @@ class Validator:
 
         # FORK CHOICE HAPPENS HERE:
         next_fork_choice = fork_choice(genesis_blocks[shard_sequence[0]], blocks, weighted_blocks)
-        for i in range(len(backwards_shard_sequence)):
+        i = 0
+        while(next_fork_choice.shard_ID != shard_ID):
             next_fork_choice = sharded_fork_choice(shard_sequence[i], genesis_blocks, blocks, weighted_blocks, next_fork_choice)
+            i += 1
+
 
         print("shard_sequence", shard_sequence)
         print("shard_ID", next_fork_choice.shard_ID, shard_ID)

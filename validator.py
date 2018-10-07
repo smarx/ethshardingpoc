@@ -114,23 +114,8 @@ class Validator:
             fork_choices[shard_ID] = self.make_fork_choice(shard_ID)
         return fork_choices
 
-    def next_hop_legacy(self, block, target_shard_ID):
-        if block.shard_ID == target_shard_ID:
-            return block.shard_ID
-
-        ret = None
-        for neighbor_shard_ID in block.child_IDs:
-            assert neighbor_shard_ID != block.shard_ID
-            candidate = self.next_hop(block.sources[neighbor_shard_ID], target_shard_ID)
-            if candidate is not None:
-                assert ret is None
-                ret = neighbor_shard_ID
-                # break # <-- uncommenting would maintain correctness, but would disable asserting if multiple paths lead to the target_shard_ID
-
-        return ret
-
-    def next_hop(self, block, target_shard_ID):
-        return block.routing_table[target_shard_ID] if target_shard_ID in block.routing_table else None
+    def next_hop(self, routing_table, target_shard_ID):
+        return routing_table[target_shard_ID] if target_shard_ID in routing_table else None
 
     def make_block(self, shard_ID, mempools, drain_amount, genesis_blocks, TTL=TTL_CONSTANT):
         genesis_blocks = self.genesis_blocks()
@@ -171,7 +156,7 @@ class Validator:
             neighbor_fork_choice = self.make_fork_choice(ID)
             # SOURCES = FORK CHOICE (except for self)
             sources[ID] = neighbor_fork_choice
-            assert sources[ID].is_in_chain(prevblock.sources[ID]), "Sources inconsistent, new block shard id: %s, source from shard: %s, heights: %s over %s" % (shard_ID, ID, sources[ID].height, prevblock.sources[ID].height)
+            assert sources[ID].is_in_chain(prevblock.sources[ID]), "Sources inconsistent, new block shard id: %s, source from shard: %s, heights: %s over %s, new_source_parent_ID: %s, old_source_parent_ID: %s, first_children: %s, three_parent: %s" % (shard_ID, ID, sources[ID].height, prevblock.sources[ID].height, sources[ID].parent_ID, prevblock.sources[ID].parent_ID, self.make_fork_choice(1).child_IDs, self.make_fork_choice(3).parent_ID)
         #for ID in SHARD_IDS:
         #    if ID not in neighbor_shard_IDs and ID != shard_ID:
         #        sources[ID] = prevblock.sources[ID]
@@ -181,6 +166,7 @@ class Validator:
             child_to_become_parent = mempools[shard_ID][num_prev_txs]['child_to_become_parent']
             child_to_move_down = mempools[shard_ID][num_prev_txs]['child_to_move_down']
             # TODO: for swapping with root only one message will be needed
+            sources = copy.copy(prevblock.sources)
             msg1 = SwitchMessage_BecomeAParent(sources[child_to_become_parent], 1, child_to_become_parent, child_to_move_down, sources[child_to_move_down])
             msg2 = SwitchMessage_ChangeParent(sources[child_to_move_down], 1, child_to_move_down, child_to_become_parent, sources[child_to_become_parent])
 
@@ -243,17 +229,46 @@ class Validator:
                         become_a_parent_of = (m.new_child_ID, m.new_child_source)
                     elif isinstance(m, SwitchMessage_ChangeParent):
                         change_parent_to = (m.new_parent_ID, m.new_parent_source)
+
+        routing_table = copy.copy(prevblock.routing_table)
+        new_parent_ID = prevblock.parent_ID
+
+        if become_a_parent_of is not None:
+            routing_table[become_a_parent_of[0]] = become_a_parent_of[0]
+            neighbor_fork_choice = self.make_fork_choice(become_a_parent_of[0])
+            sources[become_a_parent_of[0]] = neighbor_fork_choice
+
+            ID = become_a_parent_of[0]
+            received_log.log[ID] = copy.copy(neighbor_fork_choice.sent_log.log[shard_ID])
+            previous_received_log_size = len(prevblock.received_log.log[ID])
+            newly_received_messages[ID] = received_log.log[ID][previous_received_log_size:]
+
+        if change_parent_to is not None:
+            new_parent_ID = change_parent_to[0]
+            neighbor_fork_choice = self.make_fork_choice(change_parent_to[0])
+            sources[change_parent_to[0]] = neighbor_fork_choice
+
+            ID = change_parent_to[0]
+            received_log.log[ID] = copy.copy(neighbor_fork_choice.sent_log.log[shard_ID])
+            previous_received_log_size = len(prevblock.received_log.log[ID])
+            newly_received_messages[ID] = received_log.log[ID][previous_received_log_size:]
+
+        for ID in SHARD_IDS:
+            for m in newly_received_messages[ID]:
+                if m.target_shard_ID == shard_ID:
+                    if isinstance(m, SwitchMessage_BecomeAParent):
+                        become_a_parent_of = (m.new_child_ID, m.new_child_source)
+                    elif isinstance(m, SwitchMessage_ChangeParent):
+                        change_parent_to = (m.new_parent_ID, m.new_parent_source)
                     else:
                         newly_received_payloads.add_message(ID, m)
 
                 else:
-                    next_hop_ID = self.next_hop(prevblock, m.target_shard_ID)
-                    next_hop_ID_legacy = self.next_hop_legacy(prevblock, m.target_shard_ID)
-                    assert next_hop_ID == next_hop_ID_legacy or next_hop_ID_legacy is None, "%s <> %s, my shard id: %s, target: %s" % (next_hop_ID, next_hop_ID_legacy, shard_ID, ID)
+                    next_hop_ID = self.next_hop(routing_table, m.target_shard_ID)
                     if next_hop_ID is not None:
                         assert next_hop_ID in prevblock.child_IDs, "shard_ID: %s, destination: %s, next_hop: %s, children: %s" % (shard_ID, ID, next_hop_ID, prevblock.child_IDs)
                     else:
-                        next_hop_ID = prevblock.parent_ID
+                        next_hop_ID = new_parent_ID
                     assert next_hop_ID is not None
                     new_sent_messages.log[next_hop_ID].append(Message(sources[next_hop_ID], m.TTL, m.target_shard_ID, m.payload))
 
@@ -279,13 +294,11 @@ class Validator:
                     # one that sends a message that must be included by the base
                     # which already exists and therefore cannot include this message
                     if TTL > 0:
-                        first_hop_ID = self.next_hop(prevblock, ID)
-                        first_hop_ID_legacy = self.next_hop_legacy(prevblock, ID)
-                        assert first_hop_ID == first_hop_ID_legacy or first_hop_ID_legacy is None, "%s != %s" % (first_hop_ID, first_hop_ID_legacy)
+                        first_hop_ID = self.next_hop(routing_table, ID)
                         if first_hop_ID is not None:
-                            assert first_hop_ID in [prevblock.parent_ID] + prevblock.child_IDs, "shard_ID: %s, target: %s, first_hop_ID: %s, parent: %s, children: %s, rtable: %s" % (shard_ID, ID, first_hop_ID, prevblock.parent_ID, prevblock.child_IDs, prevblock.routing_table)
+                            assert first_hop_ID in prevblock.child_IDs, "shard_ID: %s, target: %s, first_hop_ID: %s, parent: %s, children: %s, rtable: %s" % (shard_ID, ID, first_hop_ID, prevblock.parent_ID, prevblock.child_IDs, prevblock.routing_table)
                         else:
-                            first_hop_ID = prevblock.parent_ID
+                            first_hop_ID = new_parent_ID
                         assert first_hop_ID is not None
                         new_sent_messages.log[first_hop_ID].append(Message(sources[first_hop_ID], TTL, ID, m.payload))
                     else:
@@ -297,7 +310,7 @@ class Validator:
 
 
 
-        ret = Block(shard_ID, prevblock, new_txn_log, sent_log, received_log, sources, new_vm_state)
+        ret = Block(shard_ID, prevblock, new_txn_log, sent_log, received_log, sources, new_vm_state, postpone_validation=True)
         if become_a_parent_of is not None:
             assert become_a_parent_of[0] not in ret.child_IDs, "shard_ID: %s, become_of: %s, child_IDs: %s" % (shard_ID, become_a_parent_of[0], ret.child_IDs)
             ret.child_IDs.append(become_a_parent_of[0])
@@ -307,6 +320,9 @@ class Validator:
             assert change_parent_to[0] not in ret.child_IDs
             assert change_parent_to[0] != ret.parent_ID
             ret.parent_ID = change_parent_to[0]
+
+        check = ret.is_valid()
+        assert check[0], check[1]
 
         return ret
 

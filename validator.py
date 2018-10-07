@@ -92,41 +92,13 @@ class Validator:
         return genesis_blocks
 
 
-    def make_fork_choice(self, shard_ID, last_block=None):
+    def make_fork_choice(self, shard_ID):
         # the blocks in the view are the genesis blocks and blocks from consensus messages
         blocks = self.get_blocks_from_consensus_messages()
         weighted_blocks = self.get_weighted_blocks()
         genesis_blocks = self.genesis_blocks()
 
-        if genesis_blocks[shard_ID].parent_ID is None:
-            return fork_choice(genesis_blocks[shard_ID], blocks, weighted_blocks)
-
-        if last_block is None:
-            # Getting sequence of shards from shard_ID to root shard
-            this_ID = shard_ID
-            backwards_shard_sequence = [this_ID]
-            while(genesis_blocks[this_ID].parent_ID is not None):
-                this_ID = genesis_blocks[this_ID].parent_ID
-                backwards_shard_sequence.append(this_ID)
-
-            shard_sequence = []
-            for i in range(len(backwards_shard_sequence)):
-                shard_sequence.append(backwards_shard_sequence[len(backwards_shard_sequence) - 1 - i])
-
-            assert genesis_blocks[shard_sequence[0]].parent_ID is None, genesis_blocks[shard_sequence[0]].parent_ID
-            assert genesis_blocks[shard_sequence[-1]].shard_ID == shard_ID
-            for i in range(len(backwards_shard_sequence) - 1):
-                assert shard_sequence[i] == genesis_blocks[shard_sequence[i+1]].parent_ID, "expected chain of parents!"
-
-
-            # FORK CHOICE HAPPENS HERE:
-            next_fork_choice = fork_choice(genesis_blocks[shard_sequence[0]], blocks, weighted_blocks)
-            i = 0
-            while(next_fork_choice.shard_ID != shard_ID):
-                next_fork_choice = sharded_fork_choice(shard_sequence[i], genesis_blocks, blocks, weighted_blocks, next_fork_choice)
-                i += 1
-        else:
-            next_fork_choice = sharded_fork_choice(shard_ID, genesis_blocks, blocks, weighted_blocks, last_block)
+        next_fork_choice = sharded_fork_choice(shard_ID, genesis_blocks, blocks, weighted_blocks)
 
 
         #print("shard_sequence", shard_sequence)
@@ -196,10 +168,7 @@ class Validator:
             #    assert prevblock.received_log.log[ID][-1].base.shard_ID == ID
             #    sources[ID] = prevblock.received_log.log[ID][-1].base
 
-            if ID == prevblock.parent_ID:
-                neighbor_fork_choice = self.make_fork_choice(ID)
-            else:
-                neighbor_fork_choice = self.make_fork_choice(ID, prevblock)
+            neighbor_fork_choice = self.make_fork_choice(ID)
             # SOURCES = FORK CHOICE (except for self)
             sources[ID] = neighbor_fork_choice
             assert sources[ID].is_in_chain(prevblock.sources[ID]), "Sources inconsistent, new block shard id: %s, source from shard: %s, heights: %s over %s" % (shard_ID, ID, sources[ID].height, prevblock.sources[ID].height)
@@ -248,11 +217,8 @@ class Validator:
                 continue
 
             if ID in neighbor_shard_IDs:
-                if ID == prevblock.parent_ID:
-                    neighbor_fork_choice = self.make_fork_choice(ID)
-                else:
-                    neighbor_fork_choice = self.make_fork_choice(ID, prevblock)
-            # RECEIVED = SENT MESSAGES FROM FORK CHOICE
+                neighbor_fork_choice = self.make_fork_choice(ID)
+                # RECEIVED = SENT MESSAGES FROM FORK CHOICE
                 received_log.log[ID] = neighbor_fork_choice.sent_log.log[shard_ID]
             else:
                 received_log.log[ID] = copy.copy(prevblock.received_log.log[ID])
@@ -286,7 +252,7 @@ class Validator:
                     next_hop_ID_legacy = self.next_hop_legacy(prevblock, m.target_shard_ID)
                     assert next_hop_ID == next_hop_ID_legacy or next_hop_ID_legacy is None, "%s <> %s, my shard id: %s, target: %s" % (next_hop_ID, next_hop_ID_legacy, shard_ID, ID)
                     if next_hop_ID is not None:
-                        assert next_hop_ID in prevblock.child_IDs, shard_ID
+                        assert next_hop_ID in prevblock.child_IDs, "shard_ID: %s, destination: %s, next_hop: %s, children: %s" % (shard_ID, ID, next_hop_ID, prevblock.child_IDs)
                     else:
                         next_hop_ID = prevblock.parent_ID
                     assert next_hop_ID is not None

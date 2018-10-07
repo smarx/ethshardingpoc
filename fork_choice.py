@@ -2,6 +2,8 @@ from blocks import Block
 from config import SHARD_IDS
 from typing import List, Dict
 
+import copy
+
 # Returns children of a block tht are not in the filter
 def filtered_children(block, blocks, block_filter):
     children = []
@@ -52,8 +54,65 @@ def fork_choice(starting_block, blocks, weighted_blocks, block_filter=[]) -> Blo
 
     return this_block
 
+def is_block_filtered(shard_ID, parent_ID, b, starting_blocks, blocks, weighted_blocks, tips_cache):
+    new_starting_blocks = copy.copy(starting_blocks)
+    # TODO: we don't want to always start from genesis, Vlad fix me!
+    #new_starting_blocks[parent_ID] = b.sources[parent_ID]
+    parent_shard_fork_choice = sharded_fork_choice(parent_ID, new_starting_blocks, blocks, weighted_blocks, tips_cache)
+
+    # FILTER BLOCKS THAT DONT AGREE WITH MOST RECENT SOURCE
+    if parent_shard_fork_choice.sources[b.shard_ID] is not None:
+        if not parent_shard_fork_choice.sources[b.shard_ID].is_in_chain(b):
+            if not b.is_in_chain(parent_shard_fork_choice.sources[b.shard_ID]):
+                return True
+    # --------------------------------------------------------------------#
+
+
+    # FILTER BLOCKS WITH ORPHANED SOURCES
+    if b.sources[parent_ID] is not None:
+        if not parent_shard_fork_choice.is_in_chain(b.sources[parent_ID]):
+            return True
+    # --------------------------------------------------------------------#
+
+
+    # FILTER BLOCKS WITH ORPHANED BASES
+    filtered = False
+    for m in b.newly_sent()[parent_ID]:
+        if not parent_shard_fork_choice.is_in_chain(m.base):
+            return True
+    # --------------------------------------------------------------------#
+
+
+    # FILTER BLOCKS THAT FAIL TO RECEIVE MESSAGES FROM PARENT ON TIME
+    filtered = False
+    for m in parent_shard_fork_choice.sent_log.log[b.shard_ID]:  # inefficient
+        if m in b.received_log.log[parent_ID]:
+            continue
+        if b.height >= m.base.height + m.TTL:  # EXPIRY CONDITION
+            return True
+    # --------------------------------------------------------------------#
+
+
+    # FILTER BLOCKS THAT SEND MESSAGES THAT WERE NOT RECEIVED IN TIME
+    filtered = False
+    for m in b.sent_log.log[parent_ID]:  # inefficient
+        if m in parent_shard_fork_choice.received_log.log[b.shard_ID]:
+            continue
+        if parent_shard_fork_choice.height >= m.base.height + m.TTL:   # EXPIRY CONDITION
+            return True
+    # --------------------------------------------------------------------#
+
+    return False
+
 # Sharded fork choice rule returns a block for every shard
-def sharded_fork_choice(shard_ID, starting_blocks, blocks, weighted_blocks, parent_shard_fork_choice: Block):
+def sharded_fork_choice(shard_ID, starting_blocks, blocks, weighted_blocks, tips_cache=None):
+    if tips_cache is None:
+        tips_cache = {}
+
+    cache_key = (shard_ID, starting_blocks[shard_ID])
+    if cache_key in tips_cache:
+        return tips_cache[cache_key]
+
     # TYPE GUARD
     for ID in starting_blocks.keys():
         assert ID in SHARD_IDS, "expected shard IDs"
@@ -75,74 +134,26 @@ def sharded_fork_choice(shard_ID, starting_blocks, blocks, weighted_blocks, pare
 
     # --------------------------------------------------------------------#
 
-    parent_ID = parent_shard_fork_choice.shard_ID
+    parent_ID = starting_blocks[shard_ID].parent_ID
+    if parent_ID is None:
+        ret = fork_choice(starting_blocks[shard_ID], blocks, weighted_blocks)
+        tips_cache[cache_key] = ret
+        return ret
+        
 
     # THE CHILD SHARD HAS TO FILTER BLOCKS FROM ITS FORK CHOICE
     # AS A FUNCTION OF THE FORK CHOICE OF THE PARENT
     block_filter = []
     for b in blocks:
-
         # we are only going to filter from children
         if b.shard_ID != shard_ID:
             continue
 
-        # FILTER BLOCKS THAT DONT AGREE WITH MOST RECENT SOURCE
-        if parent_shard_fork_choice.sources[b.shard_ID] is not None:
-            if not parent_shard_fork_choice.sources[b.shard_ID].is_in_chain(b):
-                if not b.is_in_chain(parent_shard_fork_choice.sources[b.shard_ID]):
-                    block_filter.append(b)
-                    continue
-        # --------------------------------------------------------------------#
-
-
-        # FILTER BLOCKS WITH ORPHANED SOURCES
-        if b.sources[parent_ID] is not None:
-            if not parent_shard_fork_choice.is_in_chain(b.sources[parent_ID]):
-                block_filter.append(b)
-                continue
-        # --------------------------------------------------------------------#
-
-
-        # FILTER BLOCKS WITH ORPHANED BASES
-        filtered = False
-        for m in b.newly_sent()[parent_ID]:
-            if not parent_shard_fork_choice.is_in_chain(m.base):
-                block_filter.append(b)
-                filtered = True
-                break
-        if filtered:
-            continue
-        # --------------------------------------------------------------------#
-
-
-        # FILTER BLOCKS THAT FAIL TO RECEIVE MESSAGES FROM PARENT ON TIME
-        filtered = False
-        for m in parent_shard_fork_choice.sent_log.log[b.shard_ID]:  # inefficient
-            if m in b.received_log.log[parent_ID]:
-                continue
-            if b.height >= m.base.height + m.TTL:  # EXPIRY CONDITION
-                block_filter.append(b)
-                filtered = True
-                break
-        if filtered:
-            continue
-        # --------------------------------------------------------------------#
-
-
-        # FILTER BLOCKS THAT SEND MESSAGES THAT WERE NOT RECEIVED IN TIME
-        filtered = False
-        for m in b.sent_log.log[parent_ID]:  # inefficient
-            if m in parent_shard_fork_choice.received_log.log[b.shard_ID]:
-                continue
-            if parent_shard_fork_choice.height >= m.base.height + m.TTL:   # EXPIRY CONDITION
-                block_filter.append(b)
-                filtered = True
-                break
-        if filtered:
-            continue
-        # --------------------------------------------------------------------#
-
-
+        if is_block_filtered(shard_ID, parent_ID, b, starting_blocks, blocks, weighted_blocks, tips_cache):
+            block_filter.append(b)
 
     # CALCULATE CHILD FORK CHOICE (FILTERED GHOST)
-    return fork_choice(starting_blocks[shard_ID], blocks, weighted_blocks, block_filter)
+    ret = fork_choice(starting_blocks[shard_ID], blocks, weighted_blocks, block_filter)
+    tips_cache[cache_key] = ret
+    return ret
+

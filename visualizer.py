@@ -189,7 +189,7 @@ def report(watcher):
     for shard_ID in SHARD_IDS:
         x = (ShardBorderPos[(shard_ID, "topleft")][0] + ShardBorderPos[(shard_ID, "topright")][0])/2  - DISPLAY_HEIGHT
         y = (ShardBorderPos[(shard_ID, "topleft")][1] + ShardBorderPos[(shard_ID, "bottomleft")][1])/2
-        ShardPos[shard_ID] = (x, y)
+        ShardPos[shard_ID] = (x/2, y/2 + DISPLAY_HEIGHT/4)
         labels[shard_ID] = shard_ID
 
     nx.draw_networkx_nodes(ShardLayout, ShardPos, node_color='#e6f3f7', edge_color='b', node_size=4000)
@@ -410,8 +410,11 @@ def report(watcher):
                 for i in range(len(RECEIVED_GRAPH_COLORS)):
                     OrphanedReceivedMessagesGraph[i].add_node(new_received_message)
                     AcceptedReceivedMessagesGraph[i].add_node(new_received_message)
+                    OrphanedReceivedMessagesGraph[i].add_node(("r", new_received_message))
+                    AcceptedReceivedMessagesGraph[i].add_node(("r", new_received_message))
 
-                shard_messagesPos[new_received_message] = messagesPos[m]
+                assert new_received_message in shard_messagesPos.keys()
+                shard_messagesPos[("r", new_received_message)] = shard_messagesPos[m]
 
                 #  Hypothesis is that this continue only occurs when the source of the new received is outside of the displayable messages
                 if new_received_message not in consensus_message_by_shard_message.keys():
@@ -434,22 +437,15 @@ def report(watcher):
                         #print("sending_block", sending_block)
                         #print("fork_choice[m.estimate.shard_ID]", fork_choice[m.estimate.shard_ID])
                         #print("fork_choice[sending_block.shard_ID]", fork_choice[sending_block.shard_ID])
-                        AcceptedReceivedMessagesGraph[COLOR_ID].add_edge(new_shard_message_origin, m)
+                        AcceptedReceivedMessagesGraph[COLOR_ID].add_edge(new_received_message, ("r", new_received_message))
                         continue
 
-                OrphanedReceivedMessagesGraph[COLOR_ID].add_edge(new_shard_message_origin, new_received_message)
+                OrphanedReceivedMessagesGraph[COLOR_ID].add_edge(new_received_message, ("r", new_received_message))
 
     for i, clr in enumerate(RECEIVED_GRAPH_COLORS):
         nx.draw_networkx_edges(AcceptedReceivedMessagesGraph[i], shard_messagesPos, edge_color=clr, arrowsize=50, arrowstyle='->', width=6)
         nx.draw_networkx_edges(OrphanedReceivedMessagesGraph[i], shard_messagesPos, edge_color=clr, arrowsize=20, arrowstyle='->', width=1.25)
 
-    ax = plt.axes()
-    # FLOATING TEXT
-    for ID in SHARD_IDS:
-        ax.text(ShardBorderPos[(ID,"bottomleft")][0], ShardBorderPos[(ID,"bottomleft")][1], ID,
-        horizontalalignment='right',
-        verticalalignment='center',
-        size=25)
 
     plt.axis('off')
     plt.draw()
@@ -457,7 +453,13 @@ def report(watcher):
 
 
 '''
-
+    ax = plt.axes()
+    # FLOATING TEXT
+    for ID in SHARD_IDS:
+        ax.text(ShardBorderPos[(ID,"bottomleft")][0], ShardBorderPos[(ID,"bottomleft")][1], ID,
+        horizontalalignment='right',
+        verticalalignment='center',
+        size=25)
 
     # FLOATING TEXT
     ax.text(0, 0.2, 'child shard',

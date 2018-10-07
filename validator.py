@@ -219,7 +219,7 @@ class Validator:
             if ID in neighbor_shard_IDs:
                 neighbor_fork_choice = self.make_fork_choice(ID)
                 # RECEIVED = SENT MESSAGES FROM FORK CHOICE
-                received_log.log[ID] = neighbor_fork_choice.sent_log.log[shard_ID]
+                received_log.log[ID] = copy.copy(neighbor_fork_choice.sent_log.log[shard_ID])
             else:
                 received_log.log[ID] = copy.copy(prevblock.received_log.log[ID])
         # --------------------------------------------------------------------#
@@ -228,16 +228,15 @@ class Validator:
         # PREP NEWLY RECEIVED PMESSAGES IN A RECEIVEDLOG FOR EVM:
         newly_received_messages = {}
         new_sent_messages = MessagesLog()
-        for ID in neighbor_shard_IDs:
+        for ID in SHARD_IDS:
             previous_received_log_size = len(prevblock.received_log.log[ID])
-            current_received_log_size = len(received_log.log[ID])
             newly_received_messages[ID] = received_log.log[ID][previous_received_log_size:]
 
         become_a_parent_of = None
         change_parent_to = None
 
         newly_received_payloads = MessagesLog()
-        for ID in neighbor_shard_IDs:
+        for ID in SHARD_IDS:
             for m in newly_received_messages[ID]:
                 if m.target_shard_ID == shard_ID:
                     if isinstance(m, SwitchMessage_BecomeAParent):
@@ -303,13 +302,11 @@ class Validator:
             assert become_a_parent_of[0] not in ret.child_IDs, "shard_ID: %s, become_of: %s, child_IDs: %s" % (shard_ID, become_a_parent_of[0], ret.child_IDs)
             ret.child_IDs.append(become_a_parent_of[0])
             ret.routing_table[become_a_parent_of[0]] = become_a_parent_of[0]
-            ret.sources[become_a_parent_of[0]] = become_a_parent_of[1]
 
         if change_parent_to is not None:
             assert change_parent_to[0] not in ret.child_IDs
             assert change_parent_to[0] != ret.parent_ID
             ret.parent_ID = change_parent_to[0]
-            ret.sources[change_parent_to[0]] = change_parent_to[1]
 
         return ret
 

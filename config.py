@@ -46,7 +46,7 @@ NUM_WITHIN_SHARD_RECEIPTS_PER_ROUND = 15
 NUM_BETWEEN_SHARD_RECEIPTS_PER_ROUND = 15
 MEMPOOL_DRAIN_RATE = 1
 REPORT_INTERVAL = 1
-PAUSE_LENGTH = 1
+PAUSE_LENGTH = 1 
 
 # Instant broadcast
 FREE_INSTANT_BROADCAST = False
@@ -68,9 +68,3 @@ SHARD_MESSAGE_YOFFSET = 10
 SHARD_MESSAGE_XOFFSET = 5
 
 CONSENSUS_MESSAGE_HEIGHTS_TO_DISPLAY_IN_ROOT = 25
-
-# Set to True to restrict routing to paths specified in MSG_ROUTES
-RESTRICT_ROUTING = True
-
-# Define message routes in a dict {source: [destination1, destination2, ...]}
-MSG_ROUTES = {3: [4,5]}

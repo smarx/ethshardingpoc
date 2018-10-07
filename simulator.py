@@ -49,16 +49,11 @@ for v in VALIDATOR_NAMES:
 
 # GLOBAL MEMPOOLS
 mempools = {}
-if RESTRICT_ROUTING:
-    for ID in SHARD_IDS:
-        if ID in MSG_ROUTES:
-            mempools[ID] = gen_alice_and_bob_tx(MSG_ROUTES[ID])
-        else:
-            mempools[ID] = []
-else:
-    txs = gen_alice_and_bob_tx()
-    for ID in SHARD_IDS:
-        mempools[ID] = copy.copy(txs)
+txs = gen_alice_and_bob_tx()
+for ID in SHARD_IDS:
+    mempools[ID] = copy.copy(txs)
+
+#add_switch_message(1, 4, 3, 1)
 
 # GLOBAL VIEWABLES
 viewables = {}

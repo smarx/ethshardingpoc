@@ -283,10 +283,17 @@ class Block:
         for ID in SHARD_IDS:
 
             # sources are montonic
+<<<<<<< Updated upstream
             if self.prevblock.sources[ID] is not None:
                 if not self.sources[ID].is_in_chain(self.prevblock.sources[ID]):
                     return False, "expected sources to be monotonic, shard_ID: %s, source shard id: %s, old height: %s, new height: %s" % (self.shard_ID, ID, self.prevblock.sources[ID].height, self.sources[ID].height)
 
+=======
+            if self.sources[ID] is not None:
+                if self.prevblock.sources[ID] is not None:
+                    if not self.sources[ID].is_in_chain(self.prevblock.sources[ID]):
+                        return False, "expected sources to be monotonic"
+>>>>>>> Stashed changes
 
             # previous tx list is a prefix of this txn list
             prev_num_txs = len(self.prevblock.txn_log)
@@ -350,6 +357,7 @@ class Block:
                     if not m2.base.is_in_chain(m1.base):
                         return False, "expected bases to be monotonic -- error 2"
 
+<<<<<<< Updated upstream
             # sources after bases
             # ... easier to check than agreement between bases and sources,
             # ... also easy for a block producer to enforce
@@ -363,6 +371,23 @@ class Block:
                 base = new_sent_messages[ID][-1].base  # most recent base from this block
                 if not source.is_in_chain(base): # source is also after ^^
                     return False, "expected bases to be in the chain of sources -- error 2 (sid: %s, id: %s)" % (self.shard_ID, ID)
+=======
+
+
+            # sources after bases
+            # ... easier to check than agreement between bases and sources,
+            # ... also easy for a block producer to enforce
+            source = self.sources[ID]
+            if len(self.prevblock.sent_log.log[ID]) > 0:
+                base = last_old_sent_message.base  # most recent base from prev block
+                if not source.is_in_chain(base):  # source is after ^^
+                    return False, "expected bases to be in the chaing of sources -- error 1"
+
+            if len(new_sent_messages[ID]) > 0:
+                base = new_sent_messages[ID][-1].base  # most recent base from this block
+                if not source.is_in_chain(base): # source is also after ^^
+                    return False, "expected bases to be in the chain of sources -- error 2"
+>>>>>>> Stashed changes
 
         # --------------------------------------------------------------------#
 
@@ -434,7 +459,7 @@ class Block:
 
         if len(payloads_to_reroute):
             return False, "%s messages were not rerouted" % len(payloads_to_reroute)
-                
+
         # --------------------------------------------------------------------#
 
         # made it!

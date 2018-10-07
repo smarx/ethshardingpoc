@@ -149,7 +149,7 @@ def sharded_fork_choice(shard_ID, starting_blocks, blocks, weighted_blocks, tips
         if b.shard_ID != shard_ID:
             continue
 
-        if is_block_filtered(shard_ID, parent_ID, b, starting_blocks, blocks, weighted_blocks, tips_cache):
+        if is_block_filtered(shard_ID, b.parent_ID, b, starting_blocks, blocks, weighted_blocks, tips_cache):
             block_filter.append(b)
 
     # CALCULATE CHILD FORK CHOICE (FILTERED GHOST)

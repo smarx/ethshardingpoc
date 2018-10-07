@@ -98,20 +98,13 @@ class Validator:
         weighted_blocks = self.get_weighted_blocks()
         genesis_blocks = self.genesis_blocks()
 
-        # The root shard doesn't have filtered blocks
-        for g in genesis_blocks.values():
-            if g.parent_ID is None:
-                root_choice = fork_choice(genesis_blocks[g.shard_ID], blocks, weighted_blocks)
-                break
-
-        # If we're just asking for the root shard, then we're done
-        if root_choice.shard_ID == shard_ID:
-            return root_choice
+        if genesis_blocks[shard_ID].parent_ID is None:
+            return fork_choice(genesis_blocks[shard_ID], blocks, weighted_blocks)
 
         # Getting sequence of shards from shard_ID to root shard
         backwards_shard_sequence = []
         this_ID = shard_ID
-        while(this_ID != root_choice.shard_ID):
+        while(genesis_blocks[this_ID].parent_ID is not None):
             backwards_shard_sequence.append(this_ID)
             this_ID = genesis_blocks[this_ID].parent_ID
 
@@ -124,7 +117,7 @@ class Validator:
 
 
         # FORK CHOICE HAPPENS HERE:
-        next_fork_choice = root_choice
+        next_fork_choice = fork_choice(genesis_blocks[shard_sequence[0]], blocks, weighted_blocks)
         for i in range(len(backwards_shard_sequence)):
             next_fork_choice = sharded_fork_choice(shard_sequence[i], genesis_blocks, blocks, weighted_blocks, next_fork_choice)
 

@@ -1,9 +1,11 @@
 import random as rand
 from web3 import Web3
+import copy
 from collections import defaultdict
 
-NUM_SHARDS = 6
-NUM_VALIDATORS = 18
+NUM_SHARDS = 8
+NUM_VALIDATORS_PER_SHARD = 3
+NUM_VALIDATORS = 1 + NUM_VALIDATORS_PER_SHARD*NUM_SHARDS
 
 SHARD_IDS = list(range(NUM_SHARDS))
 VALIDATOR_NAMES = []
@@ -13,37 +15,45 @@ VALIDATOR_WEIGHTS = {}
 for v in VALIDATOR_NAMES:
     VALIDATOR_WEIGHTS[v] = rand.uniform(5, 25)
 
-INITIAL_TOPOLOGY = [[1, 2], [3, 4], [5], [], [], []]
+INITIAL_TOPOLOGY = [[1,2], [3,4], [5,6], [7], [], [], [], []]
+
 
 assert len(INITIAL_TOPOLOGY) == NUM_SHARDS
 assert all([x > y for (y, lst) in enumerate(INITIAL_TOPOLOGY) for x in lst])
 
 VALIDATOR_SHARD_ASSIGNMENT = {}
-SHARD_VALIDATOR_ASSIGNMENT = defaultdict(list)
-for v in VALIDATOR_NAMES:
-    # TODO: Remove the +1. Put in to keep assignment the same.
-    shard = v // (NUM_VALIDATORS//len(SHARD_IDS))
-    VALIDATOR_SHARD_ASSIGNMENT[v] = shard
-    SHARD_VALIDATOR_ASSIGNMENT[shard].append(v)
-TTL_CONSTANT = 3
-print(SHARD_VALIDATOR_ASSIGNMENT)
+SHARD_VALIDATOR_ASSIGNMENT = {}
+
+remaining_validators = copy.copy(VALIDATOR_NAMES)
+remaining_validators.remove(0)
+
+for ID in SHARD_IDS:
+    sample = rand.sample(remaining_validators, NUM_VALIDATORS_PER_SHARD)
+
+    SHARD_VALIDATOR_ASSIGNMENT[ID] = sample
+    for v in sample:
+        remaining_validators.remove(v)
+        VALIDATOR_SHARD_ASSIGNMENT[v] = ID
+
+
+TTL_CONSTANT = 10
 
 NUM_TRANSACTIONS = 50
 
 # Experiment parameters
 NUM_ROUNDS = 1000
 NUM_WITHIN_SHARD_RECEIPTS_PER_ROUND = 15
-NUM_BETWEEN_SHARD_RECEIPTS_PER_ROUND = 30
+NUM_BETWEEN_SHARD_RECEIPTS_PER_ROUND = 15
 MEMPOOL_DRAIN_RATE = 1
 REPORT_INTERVAL = 1
-PAUSE_LENGTH = 0.1
+PAUSE_LENGTH = 0.0000001
 
 # Instant broadcast
-FREE_INSTANT_BROADCAST = True
+FREE_INSTANT_BROADCAST = False
 
 # Validity check options
 VALIDITY_CHECKS_WARNING_OFF = True
-VALIDITY_CHECKS_OFF = False
+VALIDITY_CHECKS_OFF = True
 
 DEADBEEF = Web3.toChecksumAddress(hex(1271270613000041655817448348132275889066893754095))
 

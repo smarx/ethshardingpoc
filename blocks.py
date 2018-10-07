@@ -113,7 +113,7 @@ class Block:
         else:
             self.height = self.prevblock.height + 1
             self.parent_ID = self.prevblock.parent_ID
-            self.child_IDs = self.prevblock.child_IDs
+            self.child_IDs = copy.copy(self.prevblock.child_IDs)
             self.routing_table = copy.copy(self.prevblock.routing_table)
 
         check = self.is_valid()
@@ -283,7 +283,7 @@ class Block:
         for ID in SHARD_IDS:
 
             # sources are montonic
-            if self.prevblock.sources[ID] is not None:
+            if self.prevblock.sources[ID] is not None and ID in [self.parent_ID] + self.child_IDs:
                 if not self.sources[ID].is_in_chain(self.prevblock.sources[ID]):
                     return False, "expected sources to be monotonic, shard_ID: %s, source shard id: %s, old height: %s, new height: %s" % (self.shard_ID, ID, self.prevblock.sources[ID].height, self.sources[ID].height)
 
@@ -350,25 +350,28 @@ class Block:
                     if not m2.base.is_in_chain(m1.base):
                         return False, "expected bases to be monotonic -- error 2"
 
-            # sources after bases
-            # ... easier to check than agreement between bases and sources,
-            # ... also easy for a block producer to enforce
-            source = self.sources[ID]
-            if len(self.prevblock.sent_log.log[ID]) > 0:
-                base = last_old_sent_message.base  # most recent base from prev block
-                if not source.is_in_chain(base):  # source is after ^^
-                    return False, "expected bases to be in the chaing of sources -- error 1"
+            if self.prevblock.sources[ID] is not None and ID in [self.parent_ID] + self.child_IDs:
+                # sources after bases
+                # ... easier to check than agreement between bases and sources,
+                # ... also easy for a block producer to enforce
+                source = self.sources[ID]
+                if len(self.prevblock.sent_log.log[ID]) > 0:
+                    base = last_old_sent_message.base  # most recent base from prev block
+                    if not source.is_in_chain(base):  # source is after ^^
+                        return False, "expected bases to be in the chaing of sources -- error 1"
 
-            if len(new_sent_messages[ID]) > 0:
-                base = new_sent_messages[ID][-1].base  # most recent base from this block
-                if not source.is_in_chain(base): # source is also after ^^
-                    return False, "expected bases to be in the chain of sources -- error 2 (sid: %s, id: %s)" % (self.shard_ID, ID)
+                if len(new_sent_messages[ID]) > 0:
+                    base = new_sent_messages[ID][-1].base  # most recent base from this block
+                    if not source.is_in_chain(base): # source is also after ^^
+                        return False, "expected bases to be in the chain of sources -- error 2 (sid: %s, id: %s)" % (self.shard_ID, ID)
 
         # --------------------------------------------------------------------#
 
 
         # SOURCE SYNCHRONICITY CONDITIONS
-        for ID in SHARD_IDS:
+        for ID in [self.parent_ID] + self.child_IDs:
+            if ID is None:
+                continue
 
             if self.sources[ID] is not None:
 

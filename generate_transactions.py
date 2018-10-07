@@ -80,10 +80,12 @@ def gen_payloads():
 
 '''
 
-def gen_alice_and_bob_tx():
+def gen_alice_and_bob_tx(dest_shards = None):
     tx = []
-    for x in range(0, NUM_TRANSACTIONS):
-        # tx.append(gen_in_shard_tx(hex(x)))
-        tx.append(gen_cross_shard_tx(x, SHARD_IDS[x%len(SHARD_IDS)]))
-    # print(tx[0])
+    if dest_shards is None:
+        for x in range(0, NUM_TRANSACTIONS):
+            tx.append(gen_cross_shard_tx(x, SHARD_IDS[x%len(SHARD_IDS)]))
+    else:
+        for x in range(0, NUM_TRANSACTIONS):
+            tx.append(gen_cross_shard_tx(x, dest_shards[x % len(dest_shards)]))
     return tx

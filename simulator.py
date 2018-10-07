@@ -13,6 +13,11 @@ from generate_transactions import gen_alice_and_bob_tx
 
 from config import *
 
+def add_switch_message(parent_shard, child_to_become_parent, child_to_move_down, position):
+    global mempools
+
+    mempools[parent_shard].insert(position, {'opcode': 'switch', 'child_to_become_parent': child_to_become_parent, 'child_to_move_down': child_to_move_down})
+
 # Setup
 GENESIS_BLOCKS = {}
 GENESIS_MESSAGES = []
@@ -27,6 +32,9 @@ for ID in SHARD_IDS:
         if ID in INITIAL_TOPOLOGY[_]:
             GENESIS_BLOCKS[ID].parent_ID = _
     GENESIS_BLOCKS[ID].child_IDs = INITIAL_TOPOLOGY[ID]
+
+for ID in SHARD_IDS:
+    GENESIS_BLOCKS[ID].compute_routing_table()
 
 validators = {}
 for name in VALIDATOR_NAMES:
@@ -43,7 +51,9 @@ for v in VALIDATOR_NAMES:
 mempools = {}
 txs = gen_alice_and_bob_tx()
 for ID in SHARD_IDS:
-    mempools[ID] = txs
+    mempools[ID] = copy.copy(txs)
+
+#add_switch_message(1, 4, 3, 1)
 
 # GLOBAL VIEWABLES
 viewables = {}

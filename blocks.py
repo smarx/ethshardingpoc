@@ -4,6 +4,7 @@ from config import SHARD_IDS
 from config import VALIDITY_CHECKS_OFF
 from config import VALIDITY_CHECKS_WARNING_OFF
 from config import DEADBEEF
+import copy
 import random as rand
 
 
@@ -20,8 +21,10 @@ class MessagePayload:
         # self.gasLimit = gasLimit
 
 
-class Message:
+class Message(object):
     def __init__(self, base, TTL, target_shard_ID, payload):
+        super(Message, self).__init__()
+
         assert isinstance(base, Block)
         assert base.is_valid(), "expected block to be valid"
         self.base = base
@@ -29,8 +32,22 @@ class Message:
         self.TTL = TTL
         assert target_shard_ID in SHARD_IDS, "expected shard ID"
         self.target_shard_ID = target_shard_ID
-        assert isinstance(payload, MessagePayload), "expected messagepayload format"
+        assert isinstance(payload, MessagePayload) or payload is None, "expected messagepayload format"
         self.payload = payload
+
+
+class SwitchMessage_BecomeAParent(Message):
+    def __init__(self, base, TTL, target_shard_ID, new_child_ID, new_child_source):
+        super(SwitchMessage_BecomeAParent, self).__init__(base, TTL, target_shard_ID, None)
+        self.new_child_ID = new_child_ID
+        self.new_child_source = new_child_source
+
+
+class SwitchMessage_ChangeParent(Message):
+    def __init__(self, base, TTL, target_shard_ID, new_parent_ID, new_parent_source):
+        super(SwitchMessage_ChangeParent, self).__init__(base, TTL, target_shard_ID, None)
+        self.new_parent_ID = new_parent_ID
+        self.new_parent_source = new_parent_source
 
 
 class MessagesLog:
@@ -91,6 +108,7 @@ class Block:
             self.height = self.prevblock.height + 1
             self.parent_ID = self.prevblock.parent_ID
             self.child_IDs = self.prevblock.child_IDs
+            self.routing_table = copy.copy(self.prevblock.routing_table)
 
         check = self.is_valid()
         if not check[0]:
@@ -135,7 +153,7 @@ class Block:
 
     def is_in_chain(self, block):
         assert isinstance(block, Block), "expected block"
-        assert block.is_valid(), "expected block to be valid"
+        #assert block.is_valid(), "expected block to be valid"
         if self == block:
             return True
 
@@ -171,12 +189,20 @@ class Block:
             else:
                 prev_num_received = 0
             num_new_received = num_received - prev_num_received
-            assert num_new_received >= 0, "expected growing received log"
+            assert num_new_received >= 0, "expected growing received log, shard_ID: %s, was: %s, now: %s" % (self.shard_ID, prev_num_received, num_received)
             for i in range(num_new_received):
                 new.append(self.received_log.log[ID][prev_num_received + i])
             new_received[ID] = new
 
         return new_received
+
+    def compute_routing_table(self):
+        self.routing_table = {self.shard_ID: self.shard_ID}
+        q = [(x, x, self.sources[x]) for x in self.child_IDs]
+        for target, hop, source_block in q:
+            self.routing_table[target] = hop
+            for child in source_block.child_IDs:
+                q.append((child, hop, source_block.sources[child]))
 
     # Goal: make this constant time
     def is_valid(self):
@@ -211,10 +237,16 @@ class Block:
         new_received_messages = self.newly_received()
 
 
-        for key, value in list(new_sent_messages.items()) + list(new_received_messages.items()):
-            if len(value) and key not in [self.parent_ID, self.shard_ID] + self.child_IDs:
-                return False, "Block on shard %s has sent or received message to shard %s which is not its neighbor or itself" % (self.shard_ID, key)
-
+        saw_switch_messages = False
+        for msg in new_sent_messages.items():
+            if isinstance(msg, (SwitchMessage_BecomeAParent, SwitchMessage_ChangeParent)):
+                # TODO: validate the correctness of the switch
+                saw_switch_messages = True
+            
+        if not saw_switch_messages:
+            for key, value in list(new_sent_messages.items()) + list(new_received_messages.items()):
+                if len(value) and key not in [self.parent_ID, self.shard_ID] + self.child_IDs:
+                    return False, "Block on shard %s has sent or received message to shard %s which is not its neighbor or itself (%s messages)" % (self.shard_ID, key, new_sent_messages)
 
         # SHARD ID VALIDITY CONDITIONS
 
@@ -223,10 +255,6 @@ class Block:
             return False, "prevblock should be on same shard as this block"
 
         for ID in SHARD_IDS:
-            # messages can only come from / go to neighboring shards
-            if len(new_sent_messages[ID]) or len(new_received_messages[ID]):
-                if ID not in self.child_IDs and ID != self.parent_ID:
-                    return False, "there's a sent or received message from shard %s which is neither parent not child of shard %s" % (ID, self.shard_ID)
 
             # bases for messages sent to shard i are on shard i
             for message in new_sent_messages[ID]:

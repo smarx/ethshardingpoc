@@ -1,4 +1,4 @@
-from blocks import Block, Message
+from blocks import Block, Message, SwitchMessage_BecomeAParent, SwitchMessage_ChangeParent
 from blocks import MessagesLog
 from blocks import MessagesLog
 from config import SHARD_IDS
@@ -137,7 +137,7 @@ class Validator:
             fork_choices[shard_ID] = self.make_fork_choice(shard_ID)
         return fork_choices
 
-    def next_hop(self, block, target_shard_ID):
+    def next_hop_legacy(self, block, target_shard_ID):
         if block.shard_ID == target_shard_ID:
             return block.shard_ID
 
@@ -151,6 +151,9 @@ class Validator:
                 # break # <-- uncommenting would maintain correctness, but would disable asserting if multiple paths lead to the target_shard_ID
 
         return ret
+
+    def next_hop(self, block, target_shard_ID):
+        return block.routing_table[target_shard_ID] if target_shard_ID in block.routing_table else None
 
     def make_block(self, shard_ID, mempools, drain_amount, genesis_blocks, TTL=TTL_CONSTANT):
         genesis_blocks = self.genesis_blocks()
@@ -170,12 +173,6 @@ class Validator:
         new_txn_log = copy.copy(prev_txn_log)
         data = []
         num_prev_txs = len(prev_txn_log)
-        for i in range(drain_amount):
-            if num_prev_txs + i < len(mempools[shard_ID]):
-                new_tx = mempools[shard_ID][num_prev_txs + i]
-                new_txn_log.append(new_tx)
-                data.append(new_tx)
-        # --------------------------------------------------------------------#
 
 
         neighbor_shard_IDs = []
@@ -184,9 +181,7 @@ class Validator:
         for IDs in my_fork_choice.child_IDs:
             neighbor_shard_IDs.append(IDs)
 
-
-        # BUILD RECEIVED LOG WITH:
-        received_log = MessagesLog()
+        # BUILD SOURCES
         sources = {ID : genesis_blocks[ID] for ID in SHARD_IDS}
         for ID in neighbor_shard_IDs:
             if ID == shard_ID:
@@ -195,8 +190,52 @@ class Validator:
             neighbor_fork_choice = self.make_fork_choice(ID)
             # SOURCES = FORK CHOICE (except for self)
             sources[ID] = neighbor_fork_choice
+        # --------------------------------------------------------------------#
+
+        if num_prev_txs < len(mempools[shard_ID]) and 'opcode' in mempools[shard_ID][num_prev_txs]:
+            child_to_become_parent = mempools[shard_ID][num_prev_txs]['child_to_become_parent']
+            child_to_move_down = mempools[shard_ID][num_prev_txs]['child_to_move_down']
+            # TODO: for swapping with root only one message will be needed
+            msg1 = SwitchMessage_BecomeAParent(self.make_fork_choice(child_to_become_parent), 1, child_to_become_parent, child_to_move_down, self.make_fork_choice(child_to_move_down))
+            msg2 = SwitchMessage_ChangeParent(self.make_fork_choice(child_to_move_down), 1, child_to_move_down, child_to_become_parent, self.make_fork_choice(child_to_become_parent))
+
+            mempools[shard_ID] = mempools[shard_ID][:num_prev_txs] + mempools[shard_ID][num_prev_txs + 1:]
+
+            sent_log = copy.copy(prevblock.sent_log)
+            received_log = copy.copy(prevblock.received_log)
+
+            sent_log.add_message(msg1.target_shard_ID, msg1)
+            sent_log.add_message(msg2.target_shard_ID, msg2)
+
+            ret = Block(shard_ID, prevblock, new_txn_log, sent_log, received_log, sources, prevblock.vm_state)
+            ret.child_IDs.remove(child_to_move_down)
+            ret.routing_table[child_to_move_down] = child_to_become_parent
+            return ret
+
+
+        for i in range(drain_amount):
+            if num_prev_txs + i < len(mempools[shard_ID]):
+                new_tx = mempools[shard_ID][num_prev_txs + i]
+                if 'opcode' in new_tx:
+                    # this is a switch message, stop processing messages
+                    break
+                new_txn_log.append(new_tx)
+                data.append(new_tx)
+        # --------------------------------------------------------------------#
+
+
+        # BUILD RECEIVED LOG WITH:
+        received_log = MessagesLog()
+        for ID in SHARD_IDS:
+            if ID == shard_ID:
+                continue
+
+            neighbor_fork_choice = self.make_fork_choice(ID)
             # RECEIVED = SENT MESSAGES FROM FORK CHOICE
-            received_log.log[ID] = neighbor_fork_choice.sent_log.log[shard_ID]
+            if ID in neighbor_shard_IDs:
+                received_log.log[ID] = neighbor_fork_choice.sent_log.log[shard_ID]
+            else:
+                received_log.log[ID] = copy.copy(prevblock.received_log.log[ID])
         # --------------------------------------------------------------------#
 
 
@@ -208,18 +247,29 @@ class Validator:
             current_received_log_size = len(received_log.log[ID])
             newly_received_messages[ID] = received_log.log[ID][previous_received_log_size:]
 
+        become_a_parent_of = None
+        change_parent_to = None
+
         newly_received_payloads = MessagesLog()
         for ID in neighbor_shard_IDs:
             for m in newly_received_messages[ID]:
                 if m.target_shard_ID == shard_ID:
-                    newly_received_payloads.add_message(ID, m)
+                    if isinstance(m, SwitchMessage_BecomeAParent):
+                        become_a_parent_of = (m.new_child_ID, m.new_child_source)
+                    elif isinstance(m, SwitchMessage_ChangeParent):
+                        change_parent_to = (m.new_parent_ID, m.new_parent_source)
+                    else:
+                        newly_received_payloads.add_message(ID, m)
 
                 else:
                     next_hop_ID = self.next_hop(prevblock, m.target_shard_ID)
+                    next_hop_ID_legacy = self.next_hop_legacy(prevblock, m.target_shard_ID)
+                    assert next_hop_ID == next_hop_ID_legacy or next_hop_ID_legacy is None, "%s <> %s" % (next_hop_ID, next_hop_ID_legacy)
                     if next_hop_ID is not None:
                         assert next_hop_ID in prevblock.child_IDs
                     else:
                         next_hop_ID = prevblock.parent_ID
+                    assert next_hop_ID is not None
                     new_sent_messages.log[next_hop_ID].append(Message(self.make_fork_choice(next_hop_ID), m.TTL, m.target_shard_ID, m.payload))
 
         # --------------------------------------------------------------------#
@@ -245,10 +295,13 @@ class Validator:
                     # which already exists and therefore cannot include this message
                     if TTL > 0:
                         first_hop_ID = self.next_hop(prevblock, ID)
+                        first_hop_ID_legacy = self.next_hop_legacy(prevblock, ID)
+                        assert first_hop_ID == first_hop_ID_legacy or first_hop_ID_legacy is None, "%s != %s" % (first_hop_ID, first_hop_ID_legacy)
                         if first_hop_ID is not None:
                             assert first_hop_ID in [prevblock.parent_ID] + prevblock.child_IDs
                         else:
                             first_hop_ID = prevblock.parent_ID
+                        assert first_hop_ID is not None
                         new_sent_messages.log[first_hop_ID].append(Message(self.make_fork_choice(first_hop_ID), TTL, ID, m.payload))
                     else:
                         print("Warning: Not sending message because TTL == 0")
@@ -259,7 +312,20 @@ class Validator:
 
 
 
-        return Block(shard_ID, prevblock, new_txn_log, sent_log, received_log, sources, new_vm_state)
+        ret = Block(shard_ID, prevblock, new_txn_log, sent_log, received_log, sources, new_vm_state)
+        if become_a_parent_of is not None:
+            assert become_a_parent_of[0] not in ret.child_IDs
+            ret.child_IDs.append(become_a_parent_of[0])
+            ret.routing_table[become_a_parent_of[0]] = become_a_parent_of[0]
+            ret.sources[become_a_parent_of[0]] = become_a_parent_of[1]
+
+        if change_parent_to is not None:
+            assert change_parent_to[0] not in ret.child_IDs
+            assert change_parent_to[0] != ret.parent_ID
+            ret.parent_ID = change_parent_to[0]
+            ret.sources[change_parent_to[0]] = change_parent_to[1]
+
+        return ret
 
     def make_new_consensus_message(self, shard_ID, mempools, drain_amount, genesis_blocks, TTL=TTL_CONSTANT):
 

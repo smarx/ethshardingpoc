@@ -8,7 +8,7 @@ except:
     import matplotlib.pyplot as plt
 import numpy as np
 import networkx as nx
-from blocks import Block
+from blocks import Block, SwitchMessage_BecomeAParent, SwitchMessage_ChangeParent
 from config import *
 import copy
 
@@ -58,7 +58,19 @@ def sort_blocks_by_shard_height(block_by_shard):
             root_shard_tip = b
             break
 
-    return recur_sort_shards(block_by_shard, [root_shard_tip], 0, blocks_by_height)
+    ret = recur_sort_shards(block_by_shard, [root_shard_tip], 0, blocks_by_height)
+
+    extra_height = max(list(ret.keys())) + 1
+    all_shards = [x.shard_ID for x in sum(ret.values(), [])]
+
+    for shard_ID in SHARD_IDS:
+        if shard_ID not in all_shards:
+            if extra_height not in ret:
+                ret[extra_height] = []
+            ret[extra_height].append(block_by_shard[shard_ID])
+
+    return ret
+
 
 # Implements a depth first search of the shard tree
 # The order of the search is determined by 'sorted' of shard_IDs
@@ -130,12 +142,14 @@ def report(watcher):
     shard_display_height = (DISPLAY_HEIGHT - 2*DISPLAY_MARGIN - (num_layers - 1)*SHARD_Y_SPACING)/num_layers
 
     ShardBorderPos = {}
+    print("vvvv")
     for h in range(num_layers):
         y_top = DISPLAY_HEIGHT - (DISPLAY_MARGIN + h*(shard_display_height + SHARD_Y_SPACING))
         y_bottom = y_top - shard_display_height
         for i in range(len(fork_choice_by_shard_height[h])):
             assert isinstance(fork_choice_by_shard_height[h][i], Block), "expected block"
             shard_ID = fork_choice_by_shard_height[h][i].shard_ID
+            print(shard_ID, end="")
 
             ShardBorder.add_node((shard_ID, "topleft"))
             ShardBorder.add_node((shard_ID, "topright"))
@@ -153,7 +167,9 @@ def report(watcher):
             ShardBorderPos[(shard_ID, "topright")] = (x_right, y_top)
             ShardBorderPos[(shard_ID, "bottomleft")] = (x_left, y_bottom)
             ShardBorderPos[(shard_ID, "bottomright")] = (x_right, y_bottom)
+        print()
 
+    print("^^^^")
     nx.draw_networkx_nodes(ShardBorder, ShardBorderPos, node_size=0)
     nx.draw_networkx_edges(ShardBorder, ShardBorderPos, width=1)
 
@@ -364,7 +380,7 @@ def report(watcher):
     nx.draw_networkx_edges(ShardMessagesOriginGraph, shard_messagesPos, width=6, style='dotted')
 
     # CROSS SHARD MESSAGE RECEIVE ARROWS
-    RECEIVED_GRAPH_COLORS = ['#600787', '#078760', '#876007', '#870760', '#076087', '#608707', '#FF6633', '#FFB399', '#FF33FF', '#FFFF99', '#00B3E6', 
+    RECEIVED_GRAPH_COLORS = ['#000000', '#600787', '#078760', '#876007', '#870760', '#076087', '#608707', '#FF6633', '#FFB399', '#FF33FF', '#FFFF99', '#00B3E6', 
 		  '#E6B333', '#3366E6', '#999966', '#99FF99', '#B34D4D',
 		  '#80B300', '#809900', '#E6B3B3', '#6680B3', '#66991A', 
 		  '#FF99E6', '#CCFF1A', '#FF1A66', '#E6331A', '#33FFCC',
@@ -404,7 +420,13 @@ def report(watcher):
                 new_shard_message_origin = consensus_message_by_shard_message[new_received_message]
                 sending_block = new_shard_message_origin.estimate
 
-                COLOR_ID = hash((new_received_message.TTL, new_received_message.payload, new_received_message.target_shard_ID)) % len(RECEIVED_GRAPH_COLORS)
+                COLOR_ID = hash((new_received_message.TTL, new_received_message.payload, new_received_message.target_shard_ID)) % (len(RECEIVED_GRAPH_COLORS) - 1) + 1
+
+                if isinstance(new_received_message, (SwitchMessage_BecomeAParent, SwitchMessage_ChangeParent)):
+                    COLOR_ID = 0
+                else: # XXX
+                    pass
+                    #continue
 
                 if fork_choice[m.estimate.shard_ID].is_in_chain(m.estimate):
                     if fork_choice[sending_block.shard_ID].is_in_chain(sending_block):

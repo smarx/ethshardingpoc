@@ -15,8 +15,7 @@ VALIDATOR_WEIGHTS = {}
 for v in VALIDATOR_NAMES:
     VALIDATOR_WEIGHTS[v] = rand.uniform(5, 25)
 
-INITIAL_TOPOLOGY = [[1,2], [3,4], [5,6], [7], [], [], [], []]
-
+INITIAL_TOPOLOGY = [[1, 2], [3, 4], [5], [], [], [6], [7], []]
 
 assert len(INITIAL_TOPOLOGY) == NUM_SHARDS
 assert all([x > y for (y, lst) in enumerate(INITIAL_TOPOLOGY) for x in lst])

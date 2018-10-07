@@ -137,8 +137,11 @@ def sharded_fork_choice(shard_ID, starting_blocks, blocks, weighted_blocks, pare
             if parent_shard_fork_choice.height >= m.base.height + m.TTL:   # EXPIRY CONDITION
                 block_filter.append(b)
                 filtered = True
-                continue
+                break
+        if filtered:
+            continue
         # --------------------------------------------------------------------#
+
 
 
     # CALCULATE CHILD FORK CHOICE (FILTERED GHOST)

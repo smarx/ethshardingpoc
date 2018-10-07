@@ -204,7 +204,7 @@ def report(watcher):
         if v != 0:
             ValidatorLines.add_node((v, "left"))
             ValidatorLines.add_node((v, "right"))
-            ValidatorLines.add_edge((v, "left"), (v, "right"))
+            ValidatorLines.add_edge((v, "left"), (v, "right"))  
 
 
     validator_y_coordinate = {}
@@ -430,10 +430,10 @@ def report(watcher):
 
                 if fork_choice[m.estimate.shard_ID].is_in_chain(m.estimate):
                     if fork_choice[sending_block.shard_ID].is_in_chain(sending_block):
-                        print("m.estimate", m.estimate)
-                        print("sending_block", sending_block)
-                        print("fork_choice[m.estimate.shard_ID]", fork_choice[m.estimate.shard_ID])
-                        print("fork_choice[sending_block.shard_ID]", fork_choice[sending_block.shard_ID])
+                        #print("m.estimate", m.estimate)
+                        #print("sending_block", sending_block)
+                        #print("fork_choice[m.estimate.shard_ID]", fork_choice[m.estimate.shard_ID])
+                        #print("fork_choice[sending_block.shard_ID]", fork_choice[sending_block.shard_ID])
                         AcceptedReceivedMessagesGraph[COLOR_ID].add_edge(new_shard_message_origin, m)
                         continue
 

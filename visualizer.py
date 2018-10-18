@@ -1,16 +1,28 @@
 import random
 import hashlib
-try:
-    import matplotlib.pyplot as plt
-except:
-    import matplotlib
-    matplotlib.use('TkAgg')
-    import matplotlib.pyplot as plt
+import matplotlib as mpl
+mpl.use('TkAgg')
+import matplotlib.pyplot as plt
 import numpy as np
 import networkx as nx
 from blocks import Block, SwitchMessage_BecomeAParent, SwitchMessage_ChangeParent
 from config import *
 import copy
+
+from PIL import Image, ImageFile
+ImageFile.LOAD_TRUNCATED_IMAGES = True
+#Image.open('image.jpg').load()
+
+import os
+import imageio as io
+from PIL import Image
+
+
+BASE = 10000000
+IMAGE_LIMIT = 500
+FRAMES = "graphs/"
+THUMBNAILS = "thumbs/"
+COLOURS = ["LightYellow", "Yellow", "Orange", "OrangeRed", "Red", "DarkRed", "Black"]
 
 
 def blocks_by_shard_display_height(blocks):
@@ -96,8 +108,12 @@ def recur_sort_shards(block_by_shard, sorted_children, height, blocks_by_height)
 
     return blocks_by_height
 
+def init_plt(figsize=(30,20)):
+    plt.figure(figsize=(30,20))
 
-def report(watcher):
+
+
+def report(watcher, round_number):
     plt.clf()
 
     # OUTSIDE BORDER BOX
@@ -339,9 +355,9 @@ def report(watcher):
 
     # Draw edges
     #nx.draw_networkx_edges(SourcesGraph, messagesPos, style='dashdot', edge_color='y', arrowsize=10, width=1)
-    nx.draw_networkx_edges(ForkChoiceGraph, messagesPos, edge_color='#66b266', arrowsize=25, width=15)
+    nx.draw_networkx_edges(ForkChoiceGraph, messagesPos, edge_color='#bdbdbd', alpha=1, arrowsize=25, width=15)
     nx.draw_networkx_edges(PrevblockGraph, messagesPos, width=3)
-    nx.draw_networkx_nodes(PrevblockGraph, messagesPos, node_shape='s', node_color='#0066cc', node_size=300)
+    nx.draw_networkx_nodes(PrevblockGraph, messagesPos, node_shape='s', node_color='#3c3c3d', node_size=300)
 
 
     # CROSS SHARD MESSAGES
@@ -384,16 +400,18 @@ def report(watcher):
     nx.draw_networkx_edges(ShardMessagesOriginGraph, shard_messagesPos, width=6, style='dotted')
 
     # CROSS SHARD MESSAGE RECEIVE ARROWS
-    RECEIVED_GRAPH_COLORS = ['#000000', '#600787', '#078760', '#876007', '#870760', '#076087', '#608707', '#FF6633', '#FFB399', '#FF33FF', '#FFFF99', '#00B3E6', 
-		  '#E6B333', '#3366E6', '#999966', '#99FF99', '#B34D4D',
-		  '#80B300', '#809900', '#E6B3B3', '#6680B3', '#66991A', 
-		  '#FF99E6', '#CCFF1A', '#FF1A66', '#E6331A', '#33FFCC',
-		  '#66994D', '#B366CC', '#4D8000', '#B33300', '#CC80CC', 
-		  '#66664D', '#991AFF', '#E666FF', '#4DB3FF', '#1AB399',
-		  '#E666B3', '#33991A', '#CC9999', '#B3B31A', '#00E680', 
-		  '#4D8066', '#809980', '#E6FF80', '#1AFF33', '#999933',
-		  '#FF3380', '#CCCC00', '#66E64D', '#4D80CC', '#9900B3', 
-'#E64D66', '#4DB380', '#FF4D4D', '#99E6E6', '#6666FF']
+    RECEIVED_GRAPH_COLORS = ['#000000', '#600787', '#078760', '#876007', '#870760',
+                             '#076087', '#608707', '#FF6633', '#FFB399', '#FF33FF',
+                             '#E6B333', '#3366E6', '#999966', '#99FF99', '#B34D4D',
+                             '#80B300', '#809900', '#E6B3B3', '#6680B3', '#66991A',
+                             '#FF99E6', '#CCFF1A', '#FF1A66', '#E6331A', '#33FFCC',
+                             '#66994D', '#B366CC', '#4D8000', '#B33300', '#CC80CC',
+                             '#66664D', '#991AFF', '#E666FF', '#4DB3FF', '#1AB399',
+                             '#E666B3', '#33991A', '#CC9999', '#B3B31A', '#00E680',
+                             '#4D8066', '#809980', '#E6FF80', '#1AFF33', '#999933',
+                             '#FF3380', '#CCCC00', '#66E64D', '#4D80CC', '#9900B3',
+                             '#E64D66', '#4DB380', '#FF4D4D', '#99E6E6', '#6666FF']
+
     OrphanedReceivedMessagesGraph = [nx.DiGraph() for _ in RECEIVED_GRAPH_COLORS];
     AcceptedReceivedMessagesGraph = [nx.DiGraph() for _ in RECEIVED_GRAPH_COLORS];
 
@@ -417,7 +435,7 @@ def report(watcher):
                     OrphanedReceivedMessagesGraph[i].add_node(("r", new_received_message))
                     AcceptedReceivedMessagesGraph[i].add_node(("r", new_received_message))
 
-                assert new_received_message in shard_messagesPos.keys()
+                assert m in shard_messagesPos.keys()
                 shard_messagesPos[("r", new_received_message)] = shard_messagesPos[m]
 
                 #  Hypothesis is that this continue only occurs when the source of the new received is outside of the displayable messages
@@ -447,13 +465,99 @@ def report(watcher):
                 OrphanedReceivedMessagesGraph[COLOR_ID].add_edge(new_received_message, ("r", new_received_message))
 
     for i, clr in enumerate(RECEIVED_GRAPH_COLORS):
-        nx.draw_networkx_edges(AcceptedReceivedMessagesGraph[i], shard_messagesPos, edge_color=clr, arrowsize=50, arrowstyle='->', width=6)
+        nx.draw_networkx_edges(AcceptedReceivedMessagesGraph[i], shard_messagesPos, edge_color=clr, arrowsize=50, arrowstyle='->', width=8)
         nx.draw_networkx_edges(OrphanedReceivedMessagesGraph[i], shard_messagesPos, edge_color=clr, arrowsize=20, arrowstyle='->', width=1.25)
 
+    ax = plt.axes()
+    if SWITCH_ROUND - round_number >= 0:
+        ax.text(0.1, 0.05, "Switch Countdown: " + str(SWITCH_ROUND - round_number),
+        horizontalalignment='center',
+        verticalalignment='bottom',
+        transform=ax.transAxes,
+        size=50)
 
-    plt.axis('off')
-    plt.draw()
-    plt.pause(PAUSE_LENGTH)
+    ax.text(0.1, 0.00, "Free instant broadcast: " + str(FREE_INSTANT_BROADCAST),
+    horizontalalignment='center',
+    verticalalignment='bottom',
+    transform=ax.transAxes,
+    size=50)
+
+    ax.text(0.1, -0.05, "Validating: " + str(not VALIDITY_CHECKS_OFF),
+    horizontalalignment='center',
+    verticalalignment='bottom',
+    transform=ax.transAxes,
+    size=50)
+
+    ax.text(0.1, -0.1, "Saving frames: " + str(SAVE_FRAMES),
+    horizontalalignment='center',
+    verticalalignment='bottom',
+    transform=ax.transAxes,
+    size=50)
+
+
+    if SHOW_FRAMES:
+        plt.axis('off')
+        plt.draw()
+        plt.pause(PAUSE_LENGTH)
+
+    if SAVE_FRAMES:
+        print('./graphs/' + str(10000000 + round_number) + ".png")
+        plt.savefig('./graphs/' + str(10000000 + round_number) + ".png")
+
+
+IMAGE_LIMIT = 219
+class PlotTool(object):
+    """A base object with functions for building, displaying, and saving viewgraphs"""
+
+    def __init__(self):
+        self.graph_path = os.path.dirname(os.path.abspath(__file__)) + '/graphs/'
+        self.thumbnail_path = os.path.dirname(os.path.abspath(__file__)) + '/thumbnails/'
+
+
+    def make_thumbnails(self, frame_count_limit=IMAGE_LIMIT, xsize=1000, ysize=1000):
+        """Make thumbnail images in PNG format."""
+
+        file_names = sorted([fn for fn in os.listdir(self.graph_path) if fn.endswith('.png')])
+        print("len(file_names)", len(file_names))
+
+        if len(file_names) > frame_count_limit:
+            raise Exception("Too many frames!")
+
+        images = []
+        for file_name in file_names:
+            images.append(Image.open(self.graph_path + file_name))
+
+
+        size = (xsize, ysize)
+        iterator = 0
+        for image in images:
+            image.thumbnail(size)#, Image.ANTIALIAS)
+            image.save(self.thumbnail_path + str(1000 + iterator) + "thumbnail.png", "PNG")
+            iterator += 1
+
+
+    def make_gif(self, frame_count_limit=IMAGE_LIMIT, gif_name="mygif.gif", frame_duration=0.4):
+        """Make a GIF visualization of view graph."""
+
+        self.make_thumbnails(frame_count_limit=frame_count_limit)
+
+        file_names = sorted([file_name for file_name in os.listdir(self.thumbnail_path)
+                             if file_name.endswith('thumbnail.png')])
+
+        images = []
+        for file_name in file_names:
+            images.append(Image.open(self.thumbnail_path + file_name))
+
+        destination_filename = self.graph_path + gif_name
+
+        iterator = 0
+        with io.get_writer(destination_filename, mode='I', duration=frame_duration) as writer:
+            for file_name in file_names:
+                image = io.imread(self.thumbnail_path + file_name)
+                writer.append_data(image)
+                iterator += 1
+
+        writer.close()
 
 
 '''
@@ -464,96 +568,6 @@ def report(watcher):
         horizontalalignment='right',
         verticalalignment='center',
         size=25)
-
-    # FLOATING TEXT
-    ax.text(0, 0.2, 'child shard',
-    horizontalalignment='right',
-    verticalalignment='center',
-    rotation='vertical',
-    transform=ax.transAxes,
-    size=25)
-
-    ax.text(0, 0.75, 'parent shard',
-    horizontalalignment='right',
-    verticalalignment='center',
-    rotation='vertical',
-    transform=ax.transAxes,
-    size=25)
-
-    ax.text(0.1, 0, 'messages received by \n the child fork choice:',
-    horizontalalignment='center',
-    verticalalignment='bottom',
-    transform=ax.transAxes,
-    size=20)
-
-    ax.text(0.1, -0.05, len(fork_choice[1].received_log.log[0]),
-    horizontalalignment='center',
-    verticalalignment='bottom',
-    transform=ax.transAxes,
-    size=30)
-
-    ax.text(0.25, 0, 'messages sent by \n the child fork choice:',
-    horizontalalignment='center',
-    verticalalignment='bottom',
-    transform=ax.transAxes,
-    size=20)
-
-    ax.text(0.25, -0.05, len(fork_choice[1].sent_log.log[0]),
-    horizontalalignment='center',
-    verticalalignment='bottom',
-    transform=ax.transAxes,
-    size=30)
-
-    ax.text(0.1, 1, 'messages sent by \n the parent fork choice:',
-    horizontalalignment='center',
-    verticalalignment='bottom',
-    transform=ax.transAxes,
-    size=20)
-
-    ax.text(0.1, 0.95, len(fork_choice[0].sent_log.log[1]),
-    horizontalalignment='center',
-    verticalalignment='bottom',
-    transform=ax.transAxes,
-    size=30)
-
-    ax.text(0.25, 1, 'messages received by \n the parent fork choice:',
-    horizontalalignment='center',
-    verticalalignment='bottom',
-    transform=ax.transAxes,
-    size=20)
-
-    ax.text(0.25, 0.95, len(fork_choice[0].received_log.log[1]),
-    horizontalalignment='center',
-    verticalalignment='bottom',
-    transform=ax.transAxes,
-    size=30)
-
-
-    ax.text(0.4, 0, 'deadbeef balance on \n the child fork choice:',
-    horizontalalignment='center',
-    verticalalignment='bottom',
-    transform=ax.transAxes,
-    size=20)
-
-    ax.text(0.4, -0.05, fork_choice[1].vm_state["pre"][DEADBEEF[2:].lower()]["balance"],
-    horizontalalignment='center',
-    verticalalignment='bottom',
-    transform=ax.transAxes,
-    size=30)
-
-    ax.text(0.4, 1, 'deadbeef balance on \n the parent fork choice:',
-    horizontalalignment='center',
-    verticalalignment='bottom',
-    transform=ax.transAxes,
-    size=20)
-
-    ax.text(0.4, 0.95, fork_choice[0].vm_state["pre"][DEADBEEF[2:].lower()]["balance"],
-    horizontalalignment='center',
-    verticalalignment='bottom',
-    transform=ax.transAxes,
-    size=30)
-
-
 
     plt.axis('off')
     plt.draw()

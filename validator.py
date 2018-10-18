@@ -6,10 +6,11 @@ from config import VALIDATOR_NAMES
 from config import VALIDATOR_WEIGHTS
 from config import TTL_CONSTANT
 from evm_transition import apply_to_state
-
-from fork_choice import fork_choice, sharded_fork_choice
+import random as rand
+from fork_choice import fork_choice
 
 import copy
+
 
 class UnresolvedDeps(Exception):
     pass
@@ -20,6 +21,7 @@ class ConsensusMessage:
         self.estimate = block
         self.sender = name
         self.justification = justification
+        self.hash = rand.randint(1, 10000000)
 
         assert isinstance(self.estimate, Block), "expected block"
         assert self.estimate.is_valid(), "expected block to be valid"
@@ -36,6 +38,11 @@ class ConsensusMessage:
 
         self.height = max_height + 1
 
+    def __hash__(self):
+        return self.hash
+
+    def __eq__(self, message):
+        return self.hash == message.hash
 
 class Validator:
     def __init__(self, name):
@@ -98,17 +105,14 @@ class Validator:
         weighted_blocks = self.get_weighted_blocks()
         genesis_blocks = self.genesis_blocks()
 
-        next_fork_choice = sharded_fork_choice(shard_ID, genesis_blocks, blocks, weighted_blocks)
+        next_fork_choice = fork_choice(genesis_blocks[shard_ID], blocks, weighted_blocks)
 
-
-        #print("shard_sequence", shard_sequence)
-        #print("shard_ID", next_fork_choice.shard_ID, shard_ID)
         assert next_fork_choice.shard_ID == shard_ID, "expected fork choice to be on requested shard"
 
         return next_fork_choice
 
     def make_all_fork_choices(self):
-
+        genesis_blocks = self.genesis_blocks()
         fork_choices = {}
         for shard_ID in SHARD_IDS:
             fork_choices[shard_ID] = self.make_fork_choice(shard_ID)
@@ -117,212 +121,341 @@ class Validator:
     def next_hop(self, routing_table, target_shard_ID):
         return routing_table[target_shard_ID] if target_shard_ID in routing_table else None
 
+    # 3 kinds of blocks:
+    # regular block
+    # switch sending block
+    # switch receiving block
+
     def make_block(self, shard_ID, mempools, drain_amount, genesis_blocks, TTL=TTL_CONSTANT):
-        genesis_blocks = self.genesis_blocks()
-        # RUN FORK CHOICE RULE ON SELF
-        # will only have fork choices for parent and children
-        my_fork_choice = self.make_fork_choice(shard_ID)
+
+        # First, the previous block pointer:
+        prevblock = self.make_fork_choice(shard_ID)
+        assert prevblock.shard_ID == shard_ID, "expected consistent IDs"
+
+        new_txn_log = copy.deepcopy(prevblock.txn_log)
+        new_received_log = copy.deepcopy(prevblock.received_log)
+        new_sources = copy.deepcopy(prevblock.sources)
+        new_sent_log = copy.deepcopy(prevblock.sent_log)
+        new_routing_table = copy.deepcopy(prevblock.routing_table)
+        new_parent_ID = copy.deepcopy(prevblock.parent_ID)
+        new_child_IDs = copy.deepcopy(prevblock.child_IDs)
+
+        # --------------------------------------------------------------------#
+        # This part determines whether our block is a switch block:
         # --------------------------------------------------------------------#
 
+        # Assume not, and look for switch messages as the next pending messages in tx and message queues:
+        switch_block = False
 
-        # GET PREVBLOCK POINTER FROM FORK CHOICE
-        prevblock = my_fork_choice
-        # --------------------------------------------------------------------#
-
-
-        # EXTEND THE TRANSACTION LOG FROM THE MEMPOOL
-        prev_txn_log = prevblock.txn_log
-        new_txn_log = copy.copy(prev_txn_log)
-        data = []
-        num_prev_txs = len(prev_txn_log)
-
-
-        neighbor_shard_IDs = []
-        if my_fork_choice.parent_ID is not None:
-            neighbor_shard_IDs.append(my_fork_choice.parent_ID)
-        for IDs in my_fork_choice.child_IDs:
-            neighbor_shard_IDs.append(IDs)
-
-        # BUILD SOURCES
-        sources = {ID : genesis_blocks[ID] for ID in SHARD_IDS}
-        for ID in neighbor_shard_IDs:
-            if ID == shard_ID:
-                continue
-
-            #if len(prevblock.received_log.log[ID]):
-            #    assert prevblock.received_log.log[ID][-1].base.shard_ID == ID
-            #    sources[ID] = prevblock.received_log.log[ID][-1].base
-
-            neighbor_fork_choice = self.make_fork_choice(ID)
-            # SOURCES = FORK CHOICE (except for self)
-            sources[ID] = neighbor_fork_choice
-            assert sources[ID].is_in_chain(prevblock.sources[ID]), "Sources inconsistent, new block shard id: %s, source from shard: %s, heights: %s over %s, new_source_parent_ID: %s, old_source_parent_ID: %s, first_children: %s, three_parent: %s" % (shard_ID, ID, sources[ID].height, prevblock.sources[ID].height, sources[ID].parent_ID, prevblock.sources[ID].parent_ID, self.make_fork_choice(1).child_IDs, self.make_fork_choice(3).parent_ID)
-        #for ID in SHARD_IDS:
-        #    if ID not in neighbor_shard_IDs and ID != shard_ID:
-        #        sources[ID] = prevblock.sources[ID]
-        # --------------------------------------------------------------------#
-
+        switch_tx = None
+        switch_message = None
+        # look in the mempool
+        num_prev_txs = len(new_txn_log)
         if num_prev_txs < len(mempools[shard_ID]) and 'opcode' in mempools[shard_ID][num_prev_txs]:
-            child_to_become_parent = mempools[shard_ID][num_prev_txs]['child_to_become_parent']
-            child_to_move_down = mempools[shard_ID][num_prev_txs]['child_to_move_down']
-            # TODO: for swapping with root only one message will be needed
-            sources = copy.copy(prevblock.sources)
-            msg1 = SwitchMessage_BecomeAParent(sources[child_to_become_parent], 1, child_to_become_parent, child_to_move_down, sources[child_to_move_down])
-            msg2 = SwitchMessage_ChangeParent(sources[child_to_move_down], 1, child_to_move_down, child_to_become_parent, sources[child_to_become_parent])
+            switch_tx = mempools[shard_ID][num_prev_txs]
+            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", shard_ID)
+            print("!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!", prevblock.height)
 
-            mempools[shard_ID] = mempools[shard_ID][:num_prev_txs] + mempools[shard_ID][num_prev_txs + 1:]
+            switch_block = True
+        else:  # look at sent messages of prevblock's neighbors
+            neighbor_shard_IDs = prevblock.get_neighbors()
+            old_neighbor_sources = prevblock.sources
+            for ID in neighbor_shard_IDs:
+                old_neighbor_sources[ID] = self.make_fork_choice(ID)
+                assert old_neighbor_sources[ID].is_in_chain(prevblock.sources[ID]), "expected monotonic sources - error 0"
 
-            sent_log = copy.copy(prevblock.sent_log)
-            received_log = copy.copy(prevblock.received_log)
+                last_receive_log_length = len(prevblock.received_log.log[ID])
+                if len(old_neighbor_sources[ID].sent_log.log[shard_ID]) > last_receive_log_length:
+                    next_message = old_neighbor_sources[ID].sent_log.log[shard_ID][last_receive_log_length]
+                    if isinstance(next_message, SwitchMessage_BecomeAParent) or isinstance(next_message, SwitchMessage_ChangeParent):
+                        switch_source_ID = ID
+                        switch_source = old_neighbor_sources[ID]
+                        switch_message = next_message
+                        switch_block = True
+                        break
 
-            sent_log.add_message(msg1.target_shard_ID, msg1)
-            sent_log.add_message(msg2.target_shard_ID, msg2)
+        if switch_block:
+            assert switch_message is not None or switch_tx is not None
+        # --------------------------------------------------------------------#
+        # If our block is a switch block, then we won't process anything
+        # against the EVM, nor receiving or sending messages that are not switch messages
+        # --------------------------------------------------------------------#
 
-            ret = Block(shard_ID, prevblock, new_txn_log, sent_log, received_log, sources, prevblock.vm_state)
-            ret.child_IDs.remove(child_to_move_down)
-            ret.routing_table[child_to_move_down] = child_to_become_parent
-            print("IMPORTANT: %s" % ret.routing_table)
-            return ret
+        # We will first process switch blocks:
 
+        if switch_block:
+
+            if switch_tx is not None:
+                new_txn_log.append(switch_tx)
+
+                child_to_become_parent = mempools[shard_ID][num_prev_txs]['child_to_become_parent']
+                child_to_move_down = mempools[shard_ID][num_prev_txs]['child_to_move_down']
+
+                # this could be a more conservative choice, using fork choice is a bit high risk bc we might have more switch blocks in here
+                fork_choice_of_child_to_become_parent = self.make_fork_choice(child_to_become_parent)  # new_sources[child_to_become_parent]
+                fork_choice_of_child_to_move_down = self.make_fork_choice(child_to_move_down)  # new_sources[child_to_move_down]
+
+                msg1 = SwitchMessage_BecomeAParent(fork_choice_of_child_to_become_parent, TTL_CONSTANT, child_to_become_parent, child_to_move_down, fork_choice_of_child_to_move_down)
+                msg2 = SwitchMessage_ChangeParent(fork_choice_of_child_to_move_down, TTL_CONSTANT, child_to_move_down, child_to_become_parent, fork_choice_of_child_to_become_parent)
+
+                # they have the switch messages in the sent message queues
+                new_sent_log.add_message(child_to_become_parent, msg1)
+                new_sent_log.add_message(child_to_move_down, msg2)
+
+                # removing child from the switch block
+                new_child_IDs.remove(child_to_move_down)
+
+                # now the routing table
+                for ID in new_routing_table.keys():
+                    if new_routing_table[ID] == child_to_move_down:
+                        new_routing_table[ID] = child_to_become_parent
+
+                # may be redundant, but won't hurt anyone:
+                new_routing_table[child_to_move_down] = child_to_become_parent
+
+                # parent_ID unchanged
+                # received_log unchanged
+                # sources unchanged
+
+            elif switch_message is not None:
+                new_received_log.log[switch_source_ID].append(switch_message)
+                # only update source the minimum amount to receive only the switch message
+                new_sources[switch_source_ID] = switch_source.first_block_with_message_in_sent_log(shard_ID, switch_message)
+                print("switch_source", switch_source)
+                print("switch_message", switch_message)
+                print("switch_source_ID", switch_source_ID)
+                print("new_sources[switch_source_ID]", new_sources[switch_source_ID])
+                print("switch message in new_sources[switch_source_ID].sent_log.log[shard_ID]", switch_message in new_sources[switch_source_ID].sent_log.log[shard_ID])
+                print("switch message in new_sources[switch_source_ID].prevblock.sent_log.log[shard_ID]", switch_message in new_sources[switch_source_ID].prevblock.sent_log.log[shard_ID])
+                print("new_sources[switch_source_ID].switch_block", new_sources[switch_source_ID].switch_block)
+                assert new_sources[switch_source_ID].switch_block
+
+                if isinstance(switch_message, SwitchMessage_BecomeAParent):
+                    new_child_IDs.append(switch_message.new_child_ID)
+                    for ID in switch_message.new_child_source.routing_table.keys():
+                        new_routing_table[ID] = switch_message.new_child_ID
+                elif isinstance(switch_message, SwitchMessage_ChangeParent):
+                    new_parent_ID = switch_message.new_parent_ID
+
+                # new_txn_log unchanged
+                # new_sent_log unchanged
+
+            new_block = Block(shard_ID, prevblock, True, new_txn_log, new_sent_log, new_received_log, new_sources, new_parent_ID, new_child_IDs, new_routing_table, prevblock.vm_state)
+
+            assert new_block.switch_block
+            print("new_block", new_block)
+            print("new_block.switch_block", new_block.switch_block)
+
+            check = new_block.is_valid()
+            if not check[0]:
+                print("---------------------------------------------------------")
+                print("---------------------------------------------------------")
+                print("shard_ID", prevblock.shard_ID)
+                print("---------------------------------------------------------")
+                print("---------------------------------------------------------")
+                print("txn_log", new_txn_log)
+                print("---------------------------------------------------------")
+                print("---------------------------------------------------------")
+                print("self.sent_log.log", new_sent_log.log)
+                print("---------------------------------------------------------")
+                print("---------------------------------------------------------")
+                print("self.received_log.log", new_received_log.log)
+                print("---------------------------------------------------------")
+                print("---------------------------------------------------------")
+                print("shard_ID", shard_ID)
+                print("---------------------------------------------------------")
+                print("---------------------------------------------------------")
+                print("txn_log", new_txn_log)
+                print("---------------------------------------------------------")
+                print("---------------------------------------------------------")
+                print("self.sent_log.log", new_sent_log.log)
+                print("---------------------------------------------------------")
+                print("---------------------------------------------------------")
+                print("self.received_log.log", new_received_log.log)
+                print("---------------------------------------------------------")
+                print("---------------------------------------------------------")
+                print("receiving_opcode: ", switch_block)
+                print("---------------------------------------------------------")
+                print("---------------------------------------------------------")
+            assert check[0], "Invalid Block: " + check[1]
+
+            return new_block
+
+        # --------------------------------------------------------------------#
+        # --------------------------------------------------------------------#
+        # --------------------------------------------------------------------#
+        # --------------------------------------------------------------------#
+        # --------------------------------------------------------------------#
+
+        # And now for the rest of the blocks, the ones that don't change the routing table
+        # But which do routing and execution of state against the EVM
+
+        data = []
 
         for i in range(drain_amount):
             if num_prev_txs + i < len(mempools[shard_ID]):
                 new_tx = mempools[shard_ID][num_prev_txs + i]
                 if 'opcode' in new_tx:
-                    # this is a switch message, stop processing messages
+                    # Don't add switch transaction to tx log 
                     break
                 new_txn_log.append(new_tx)
                 data.append(new_tx)
-        # --------------------------------------------------------------------#
 
+        # print("NEW TXN LEN: ", len(new_txn_log))
+        # print("PRE NEW RECEIPTS DATA LEN: ", len(data))
 
-        # BUILD RECEIVED LOG WITH:
-        received_log = MessagesLog()
-        for ID in SHARD_IDS:
+        # BUILD SOURCES FOR PREVBLOCK NEIGHBORS
+        neighbor_shard_IDs = prevblock.get_neighbors()
+        for ID in neighbor_shard_IDs:
             if ID == shard_ID:
                 continue
 
-            if ID in neighbor_shard_IDs:
-                neighbor_fork_choice = self.make_fork_choice(ID)
-                # RECEIVED = SENT MESSAGES FROM FORK CHOICE
-                received_log.log[ID] = copy.copy(neighbor_fork_choice.sent_log.log[shard_ID])
+            new_sources[ID] = self.make_fork_choice(ID)
+            assert new_sources[ID].shard_ID == ID, "expected consistent IDs"
+
+            if ID == prevblock.parent_ID:
+                assert new_sources[ID].is_in_chain(prevblock.sources[ID]), "expected monotonic consistent sources - error 1.1"
+            elif ID in prevblock.child_IDs:
+                assert new_sources[ID].is_in_chain(prevblock.sources[ID]), "expected monotonic consistent sources - error 1.2"
             else:
-                received_log.log[ID] = copy.copy(prevblock.received_log.log[ID])
+                assert False, "expected neighbor ID to be either parent or child ID"
+
+            # check that fork choices have consistent sources
+            # try to make sure that we don't make a block with a source that isn't in fork_choice's
+            assert prevblock.shard_ID == shard_ID
+            assert prevblock.is_in_chain(new_sources[ID].sources[shard_ID])
+
+        receiving_opcode = False
+        # --------------------------------------------------------------------#
+        # BUILD RECEIVED LOG WITH:
+        new_received_log = MessagesLog()
+        newly_received_messages = {}
+        for ID in neighbor_shard_IDs:
+            if ID == shard_ID:
+                continue
+
+            if ID not in newly_received_messages.keys():
+                newly_received_messages[ID] = []
+
+            new_received_log.log[ID] = copy.deepcopy(prevblock.received_log.log[ID])
+            while(len(new_received_log.log[ID]) < len(new_sources[ID].sent_log.log[shard_ID])):
+                log_length = len(new_received_log.log[ID])
+                new_message = new_sources[ID].sent_log.log[shard_ID][log_length]
+
+                if isinstance(new_message, SwitchMessage_BecomeAParent) or isinstance(new_message, SwitchMessage_ChangeParent):
+                    break  #but only receive messages up to the first switch opcod
+
+                new_received_log.log[ID].append(new_message)
+                newly_received_messages[ID].append(new_message)
+
+
         # --------------------------------------------------------------------#
 
+        # BUILD NEW SENT MESSAGES
+        new_sent_messages = MessagesLog()  # for now we're going to fill this with routed messages
+        newly_received_payloads = MessagesLog()  # destined for this shard's evm
 
-        # PREP NEWLY RECEIVED PMESSAGES IN A RECEIVEDLOG FOR EVM:
-        newly_received_messages = {}
-        new_sent_messages = MessagesLog()
-        for ID in SHARD_IDS:
-            previous_received_log_size = len(prevblock.received_log.log[ID])
-            newly_received_messages[ID] = received_log.log[ID][previous_received_log_size:]
-
-        become_a_parent_of = None
-        change_parent_to = None
-
-        newly_received_payloads = MessagesLog()
-        for ID in SHARD_IDS:
+        # ROUTING
+        for ID in new_child_IDs + [new_parent_ID]:
+            if ID not in newly_received_messages.keys():
+                continue
             for m in newly_received_messages[ID]:
                 if m.target_shard_ID == shard_ID:
                     if isinstance(m, SwitchMessage_BecomeAParent):
-                        become_a_parent_of = (m.new_child_ID, m.new_child_source)
+                        continue
                     elif isinstance(m, SwitchMessage_ChangeParent):
-                        change_parent_to = (m.new_parent_ID, m.new_parent_source)
-
-        routing_table = copy.copy(prevblock.routing_table)
-        new_parent_ID = prevblock.parent_ID
-
-        if become_a_parent_of is not None:
-            routing_table[become_a_parent_of[0]] = become_a_parent_of[0]
-            neighbor_fork_choice = self.make_fork_choice(become_a_parent_of[0])
-            sources[become_a_parent_of[0]] = neighbor_fork_choice
-
-            ID = become_a_parent_of[0]
-            received_log.log[ID] = copy.copy(neighbor_fork_choice.sent_log.log[shard_ID])
-            previous_received_log_size = len(prevblock.received_log.log[ID])
-            newly_received_messages[ID] = received_log.log[ID][previous_received_log_size:]
-
-        if change_parent_to is not None:
-            new_parent_ID = change_parent_to[0]
-            neighbor_fork_choice = self.make_fork_choice(change_parent_to[0])
-            sources[change_parent_to[0]] = neighbor_fork_choice
-
-            ID = change_parent_to[0]
-            received_log.log[ID] = copy.copy(neighbor_fork_choice.sent_log.log[shard_ID])
-            previous_received_log_size = len(prevblock.received_log.log[ID])
-            newly_received_messages[ID] = received_log.log[ID][previous_received_log_size:]
-
-        for ID in SHARD_IDS:
-            for m in newly_received_messages[ID]:
-                if m.target_shard_ID == shard_ID:
-                    if isinstance(m, SwitchMessage_BecomeAParent):
-                        become_a_parent_of = (m.new_child_ID, m.new_child_source)
-                    elif isinstance(m, SwitchMessage_ChangeParent):
-                        change_parent_to = (m.new_parent_ID, m.new_parent_source)
+                        continue
                     else:
                         newly_received_payloads.add_message(ID, m)
 
                 else:
-                    next_hop_ID = self.next_hop(routing_table, m.target_shard_ID)
+                    next_hop_ID = self.next_hop(new_routing_table, m.target_shard_ID)
                     if next_hop_ID is not None:
                         assert next_hop_ID in prevblock.child_IDs, "shard_ID: %s, destination: %s, next_hop: %s, children: %s" % (shard_ID, ID, next_hop_ID, prevblock.child_IDs)
                     else:
                         next_hop_ID = new_parent_ID
                     assert next_hop_ID is not None
-                    new_sent_messages.log[next_hop_ID].append(Message(sources[next_hop_ID], m.TTL, m.target_shard_ID, m.payload))
+                    new_sent_messages.log[next_hop_ID].append(Message(new_sources[next_hop_ID], m.TTL, m.target_shard_ID, m.payload))
+
+
 
         # --------------------------------------------------------------------#
 
-
-        # KEY EVM INTEGRATION HERE
+        # EVM integration here
 
         # this is where we have this function that produces the new vm state and the new outgoing payloads
         # new_vm_state, new_outgoing_payloads = apply_to_state(prevblock.vm_state, data, newly_received_payloads)
+        # 'data' is the new txn list
 
         new_vm_state, new_outgoing_payloads = apply_to_state(prevblock.vm_state, data, newly_received_payloads, genesis_blocks)
 
         # --------------------------------------------------------------------#
 
-
+        # print("OUTGOING PAYLOAD LENGTH", len(new_outgoing_payloads.log.values()))
         # BUILD SENT LOG FROM NEW OUTGOING PAYLOADS
         # by this time new_sent_messages might already have some messages from rerouting above
         for ID in SHARD_IDS:
             if ID != shard_ID:
                 for m in new_outgoing_payloads.log[ID]:
-                    # if TTL == 0, then we'll make an invalid block
-                    # one that sends a message that must be included by the base
-                    # which already exists and therefore cannot include this message
-                    if TTL > 0:
-                        first_hop_ID = self.next_hop(routing_table, ID)
-                        if first_hop_ID is not None:
-                            assert first_hop_ID in prevblock.child_IDs, "shard_ID: %s, target: %s, first_hop_ID: %s, parent: %s, children: %s, rtable: %s" % (shard_ID, ID, first_hop_ID, prevblock.parent_ID, prevblock.child_IDs, prevblock.routing_table)
-                        else:
-                            first_hop_ID = new_parent_ID
-                        assert first_hop_ID is not None
-                        new_sent_messages.log[first_hop_ID].append(Message(sources[first_hop_ID], TTL, ID, m.payload))
+                    # print("HERE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
+                    first_hop_ID = self.next_hop(new_routing_table, ID)
+                    if first_hop_ID is not None:
+                        assert first_hop_ID in prevblock.child_IDs, "shard_ID: %s, target: %s, first_hop_ID: %s, parent: %s, children: %s, rtable: %s" % (shard_ID, ID, first_hop_ID, prevblock.parent_ID, prevblock.child_IDs, prevblock.routing_table)
                     else:
-                        print("Warning: Not sending message because TTL == 0")
+                        first_hop_ID = new_parent_ID
+                    assert first_hop_ID is not None
+                    new_sent_messages.log[first_hop_ID].append(Message(new_sources[first_hop_ID], TTL, ID, m.payload))
 
-        sent_log = prevblock.sent_log.append_MessagesLog(new_sent_messages)
-        # --------------------------------------------------------------------#
+        SUM = 0
+        for k in new_sent_messages.log.keys():
+            SUM += len(new_sent_messages.log[k])
+        # print("NUM NEW SENT: ", SUM)
+
+        new_sent_log = new_sent_log.append_MessagesLog(new_sent_messages)
 
 
+        # MAKE BLOCK AND CHECK VALIDITY
+        # Block(ID, prevblock=None, txn_log=[], sent_log=None, received_log=None, sources=None, parent_ID=None, child_IDs=None, routing_table=None, vm_state=genesis_state):
 
+        ret = Block(shard_ID, prevblock, False, new_txn_log, new_sent_log, new_received_log, new_sources, new_parent_ID, new_child_IDs, new_routing_table, new_vm_state)
 
-        ret = Block(shard_ID, prevblock, new_txn_log, sent_log, received_log, sources, new_vm_state, postpone_validation=True)
-        if become_a_parent_of is not None:
-            assert become_a_parent_of[0] not in ret.child_IDs, "shard_ID: %s, become_of: %s, child_IDs: %s" % (shard_ID, become_a_parent_of[0], ret.child_IDs)
-            ret.child_IDs.append(become_a_parent_of[0])
-            ret.routing_table[become_a_parent_of[0]] = become_a_parent_of[0]
-
-        if change_parent_to is not None:
-            assert change_parent_to[0] not in ret.child_IDs
-            assert change_parent_to[0] != ret.parent_ID
-            ret.parent_ID = change_parent_to[0]
+        assert not ret.switch_block
 
         check = ret.is_valid()
-        assert check[0], check[1]
+        if not check[0]:
+            print("---------------------------------------------------------")
+            print("---------------------------------------------------------")
+            print("shard_ID", prevblock.shard_ID)
+            print("---------------------------------------------------------")
+            print("---------------------------------------------------------")
+            print("txn_log", new_txn_log)
+            print("---------------------------------------------------------")
+            print("---------------------------------------------------------")
+            print("self.sent_log.log", new_sent_log.log)
+            print("---------------------------------------------------------")
+            print("---------------------------------------------------------")
+            print("self.received_log.log", new_received_log.log)
+            print("---------------------------------------------------------")
+            print("---------------------------------------------------------")
+            print("---------------------------------------------------------")
+            print("---------------------------------------------------------")
+            print("shard_ID", shard_ID)
+            print("---------------------------------------------------------")
+            print("---------------------------------------------------------")
+            print("txn_log", new_txn_log)
+            print("---------------------------------------------------------")
+            print("---------------------------------------------------------")
+            print("self.sent_log.log", new_sent_log.log)
+            print("---------------------------------------------------------")
+            print("---------------------------------------------------------")
+            print("self.received_log.log", new_received_log.log)
+            print("---------------------------------------------------------")
+            print("---------------------------------------------------------")
+            print("receiving_opcode: ", receiving_opcode)
+            print("---------------------------------------------------------")
+            print("---------------------------------------------------------")
+        assert check[0], "Invalid Block: " + check[1]
 
         return ret
 

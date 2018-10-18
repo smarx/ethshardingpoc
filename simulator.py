@@ -1,9 +1,8 @@
 import random
 import copy
 import json
-import random
 import hashlib
-from visualizer import report
+from visualizer import report, init_plt
 
 from blocks import Block
 from validator import Validator
@@ -24,6 +23,9 @@ GENESIS_MESSAGES = []
 for ID in SHARD_IDS:
     GENESIS_BLOCKS[ID] = Block(ID, sources={}) # temporarily set sources to {}, since genesis blocks are not known yet
     GENESIS_MESSAGES.append(ConsensusMessage(GENESIS_BLOCKS[ID], 0, []))  # The watcher is the sender of the genesis blocks
+    for ID2 in SHARD_IDS:
+        print("len(GENESIS_BLOCKS[ID].sent_log.log[ID2]", len(GENESIS_BLOCKS[ID].sent_log.log[ID2]))
+
 
 for ID in SHARD_IDS:
     GENESIS_BLOCKS[ID].sources = {ID : GENESIS_BLOCKS[ID] for ID in SHARD_IDS}
@@ -60,7 +62,6 @@ else:
     for ID in SHARD_IDS:
         mempools[ID] = copy.copy(txs)
 
-add_switch_message(1, 4, 3, 1)
 
 # GLOBAL VIEWABLES
 viewables = {}
@@ -74,12 +75,15 @@ max_height = 0
 # SIMULATION LOOP:
 for i in range(NUM_ROUNDS):
     # Make a new message from a random validator on a random shard
-    rand_ID = random.choice(SHARD_IDS)
-    next_proposer = rand.choice(SHARD_VALIDATOR_ASSIGNMENT[rand_ID])
+    rand_ID = i % len(SHARD_IDS) #random.choice(SHARD_IDS)
+    next_proposer = random.choice(SHARD_VALIDATOR_ASSIGNMENT[rand_ID])
 
     while next_proposer == 0:
         rand_ID = random.choice(SHARD_IDS)
-        next_proposer = rand.choice(SHARD_VALIDATOR_ASSIGNMENT[rand_ID])
+        next_proposer = random.choice(SHARD_VALIDATOR_ASSIGNMENT[rand_ID])
+
+    if i == SWITCH_ROUND:
+        add_switch_message(1, 4, 3, 1)
 
     # MAKE CONSENSUS MESSAGE
     new_message = validators[next_proposer].make_new_consensus_message(rand_ID, mempools, drain_amount=MEMPOOL_DRAIN_RATE, genesis_blocks=GENESIS_BLOCKS)
@@ -151,5 +155,7 @@ for i in range(NUM_ROUNDS):
     print("Step: ", i)
     if not REPORTING:
         continue
+    if i == 0:
+        init_plt(FIG_SIZE)
     if (i + 1) % REPORT_INTERVAL == 0:
-        report(watcher)
+        report(watcher, i)

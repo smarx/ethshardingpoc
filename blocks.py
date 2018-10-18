@@ -23,7 +23,13 @@ class MessagePayload:
         # self.nonce = nonce
         # self.gasPrice = gasPrice
         # self.gasLimit = gasLimit
+        self.hash = rand.randint(1, 10000000)
 
+    def __hash__(self):
+        return self.hash
+
+    def __eq__(self, message):
+        return self.hash == message.hash
 
 class Message(object):
     def __init__(self, base, TTL, target_shard_ID, payload):
@@ -41,12 +47,25 @@ class Message(object):
         assert isinstance(payload, MessagePayload) or payload is None, "expected messagepayload format"
         self.payload = payload
 
+    def __hash__(self):
+        return self.hash
+
+    def __eq__(self, message):
+        return self.hash == message.hash
+
 
 class SwitchMessage_BecomeAParent(Message):
     def __init__(self, base, TTL, target_shard_ID, new_child_ID, new_child_source):
         super(SwitchMessage_BecomeAParent, self).__init__(base, TTL, target_shard_ID, None)
         self.new_child_ID = new_child_ID
         self.new_child_source = new_child_source
+        self.hash = rand.randint(1, 10000000)       
+
+    def __hash__(self):
+        return self.hash
+
+    def __eq__(self, message):
+        return self.hash == message.hash
 
 
 class SwitchMessage_ChangeParent(Message):
@@ -54,6 +73,13 @@ class SwitchMessage_ChangeParent(Message):
         super(SwitchMessage_ChangeParent, self).__init__(base, TTL, target_shard_ID, None)
         self.new_parent_ID = new_parent_ID
         self.new_parent_source = new_parent_source
+        self.hash = rand.randint(1, 10000000)       
+
+    def __hash__(self):
+        return self.hash
+
+    def __eq__(self, message):
+        return self.hash == message.hash
 
 
 class MessagesLog:
@@ -90,7 +116,7 @@ class MessagesLog:
 
 
 class Block:
-    def __init__(self, ID, prevblock=None, txn_log=[], sent_log=None, received_log=None, sources=None, vm_state=genesis_state, postpone_validation=False):
+    def __init__(self, ID, prevblock=None, switch_block=False, txn_log=[], sent_log=None, received_log=None, sources=None, parent_ID=None, child_IDs=None, routing_table=None, vm_state=genesis_state):
         if sent_log is None:
             sent_log = MessagesLog()
         if received_log is None:
@@ -100,54 +126,23 @@ class Block:
         assert ID in SHARD_IDS, "expected shard ID"
         self.shard_ID = ID
         self.prevblock = prevblock
+        self.switch_block = switch_block
         self.txn_log = txn_log
         self.sent_log = sent_log
         self.received_log = received_log
         self.sources = sources
         self.vm_state = vm_state
+        self.parent_ID = parent_ID
+        self.child_IDs = child_IDs
+        self.routing_table = routing_table
         self.hash = rand.randint(1, 10000000)
 
-        if prevblock is None:
+        if prevblock is None:  # genesis block
             self.height = 0
-            # this is a genesis block, the topology will be set immidiately after the creation
         else:
             self.height = self.prevblock.height + 1
-            self.parent_ID = self.prevblock.parent_ID
-            self.child_IDs = copy.copy(self.prevblock.child_IDs)
-            self.routing_table = copy.copy(self.prevblock.routing_table)
 
-        if not postpone_validation:
-            check = self.is_valid()
-            if not check[0]:
-                print("---------------------------------------------------------")
-                print("---------------------------------------------------------")
-                print("shard_ID", self.prevblock.shard_ID)
-                print("---------------------------------------------------------")
-                print("---------------------------------------------------------")
-                print("txn_log", self.prevblock.txn_log)
-                print("---------------------------------------------------------")
-                print("---------------------------------------------------------")
-                print("self.sent_log.log", self.prevblock.sent_log.log)
-                print("---------------------------------------------------------")
-                print("---------------------------------------------------------")
-                print("self.received_log.log", self.prevblock.received_log.log)
-                print("---------------------------------------------------------")
-                print("---------------------------------------------------------")
-                print("---------------------------------------------------------")
-                print("---------------------------------------------------------")
-                print("shard_ID", self.shard_ID)
-                print("---------------------------------------------------------")
-                print("---------------------------------------------------------")
-                print("txn_log", self.txn_log)
-                print("---------------------------------------------------------")
-                print("---------------------------------------------------------")
-                print("self.sent_log.log", self.sent_log.log)
-                print("---------------------------------------------------------")
-                print("---------------------------------------------------------")
-                print("self.received_log.log", self.received_log.log)
-                print("---------------------------------------------------------")
-                print("---------------------------------------------------------")
-            assert check[0], check[1]
+
 
     def __str__(self):
         return "Block(%d): shard_ID:%d height:%d" % (self.hash, self.shard_ID, self.height)
@@ -158,20 +153,71 @@ class Block:
     def __hash__(self):
         return self.hash
 
+    def is_changing_neighbors(self):
+        # Genesis block isn't changing neighbors
+        if self.prevblock is None:
+            return False
+
+        # if the parent shard changes then it's changing neighbors
+        if self.parent_ID != self.prevblock.parent_ID:
+            return True
+
+        # or if the child shards change then it's changing neighbors
+        if self.child_IDs != self.prevblock.child_IDs:
+            return True
+
+        # otherwise it's not changing neighbors
+        return False
+
     def is_in_chain(self, block):
         assert isinstance(block, Block), "expected block"
         #assert block.is_valid(), "expected block to be valid"
+        if self.shard_ID != block.shard_ID:
+            return False
+
         if self == block:
             return True
+
+        if block.height >= self.height:
+            return False
 
         if self.prevblock is None:
             return False
 
         return self.prevblock.is_in_chain(block)
 
+    def agrees(self, block):
+        assert isinstance(block, Block), "expected block"
+        return self.is_in_chain(block) or block.is_in_chain(self)
+
+    def get_neighbors(self):
+        neighbors = []
+        if self.parent_ID is not None:
+            neighbors.append(self.parent_ID)
+        for c in self.child_IDs:
+            neighbors.append(c)
+        return neighbors
+
+    def first_block_with_message_in_sent_log(self, ID, message):
+        assert message in self.sent_log.log[ID]
+        print("len(self.sent_log.log[ID]",len(self.sent_log.log[ID]))
+        if self.prevblock is None:
+            return self
+        if message not in self.prevblock.sent_log.log[ID]:
+            return self
+        else:
+            return self.prevblock.first_block_with_message_in_sent_log(ID, message)
+
+    def next_hop(self, target_shard_ID):
+        assert self.shard_ID != target_shard_ID
+        if target_shard_ID in self.routing_table:
+            return self.routing_table[target_shard_ID]
+        else:
+            return self.parent_ID
+
     def newly_sent(self):
         new_sent = dict.fromkeys(SHARD_IDS)
-        for ID in SHARD_IDS:
+        for ID in self.get_neighbors():
             new = []
             num_sent = len(self.sent_log.log[ID])
             if self.prevblock is not None:
@@ -188,7 +234,7 @@ class Block:
 
     def newly_received(self):
         new_received = {}
-        for ID in SHARD_IDS:
+        for ID in self.get_neighbors():
             new = []
             num_received = len(self.received_log.log[ID])
             if self.prevblock is not None:
@@ -249,20 +295,20 @@ class Block:
             if isinstance(msg, (SwitchMessage_BecomeAParent, SwitchMessage_ChangeParent)):
                 # TODO: validate the correctness of the switch
                 saw_switch_messages = True
-            
-         # TODO: there's a bug during rotation that pulls some received_messages from the old parent, figure it out
-#        if not saw_switch_messages:
-#            for key, value in list(new_sent_messages.items()) + list(new_received_messages.items()):
-#                if len(value) and key not in [self.parent_ID, self.shard_ID] + self.child_IDs:
-#                    return False, "Block on shard %s has sent or received message to shard %s which is not its neighbor or itself (%s messages) %s %s" % (self.shard_ID, key, new_sent_messages, self.parent_ID, self.child_IDs)
-#
+
+        if not saw_switch_messages:
+            for key, value in list(new_sent_messages.items()) + list(new_received_messages.items()):
+                if value is not None:
+                    if len(value) and key not in [self.parent_ID, self.shard_ID] + self.child_IDs:
+                        return False, "Block on shard %s has sent or received message to shard %s which is not its neighbor or itself (%s messages)" % (self.shard_ID, key, new_sent_messages)
+
         # SHARD ID VALIDITY CONDITIONS
 
         # check that the prev block is on the same shard as this block
         if self.shard_ID != self.prevblock.shard_ID:
             return False, "prevblock should be on same shard as this block"
 
-        for ID in SHARD_IDS:
+        for ID in self.get_neighbors():
 
             # bases for messages sent to shard i are on shard i
             for message in new_sent_messages[ID]:
@@ -282,12 +328,12 @@ class Block:
 
 
         # MONOTONICITY/AGREEMENT CONDITIONS
-        for ID in SHARD_IDS:
+        for ID in self.get_neighbors():
 
             # sources are montonic
             if self.prevblock.sources[ID] is not None and ID in [self.parent_ID] + self.child_IDs:
                 if not self.sources[ID].is_in_chain(self.prevblock.sources[ID]):
-                    return False, "expected sources to be monotonic, shard_ID: %s, source shard id: %s, old height: %s, new height: %s" % (self.shard_ID, ID, self.prevblock.sources[ID].height, self.sources[ID].height)
+                    return False, "expected sources to be monotonic, shard_ID: %s, source shard id: %s, old height: %s, new height: %s, %s, %s" % (self.shard_ID, ID, self.prevblock.sources[ID].height, self.sources[ID].height, self.sources[ID], self.prevblock.sources[ID])
 
 
             # previous tx list is a prefix of this txn list
@@ -359,17 +405,16 @@ class Block:
                 source = self.sources[ID]
                 if len(self.prevblock.sent_log.log[ID]) > 0:
                     base = last_old_sent_message.base  # most recent base from prev block
-                    if not source.is_in_chain(base):  # source is after ^^
-                        return False, "expected bases to be in the chaing of sources -- error 1"
+                    if not source.agrees(base):  # source is after ^^
+                        return False, "expected bases to be in the chain of sources -- error 1"
 
                 if len(new_sent_messages[ID]) > 0:
                     base = new_sent_messages[ID][-1].base  # most recent base from this block
-                    if not source.is_in_chain(base): # source is also after ^^
+                    if not source.agrees(base):  # source is also after ^^
                         return False, "expected bases to be in the chain of sources -- error 2 (sid: %s, id: %s)" % (self.shard_ID, ID)
 
+
         # --------------------------------------------------------------------#
-
-
         # SOURCE SYNCHRONICITY CONDITIONS
         for ID in [self.parent_ID] + self.child_IDs:
             if ID is None:
@@ -380,9 +425,11 @@ class Block:
                 source = self.sources[ID]
 
                 # check that the received messages are sent by the source
+                print("len(self.received_log.log[ID])",len(self.received_log.log[ID]))
+                print("len(source.sent_log.log[self.shard_ID])",len(source.sent_log.log[self.shard_ID]))
                 for i in range(len(self.received_log.log[ID])):  # warning: inefficient
                     if self.received_log.log[ID][i] != source.sent_log.log[self.shard_ID][i]:
-                        return False, "expected the received messages were sent by source, shard_ID: %s, ID: %s" % (self.shard_ID, ID)
+                        return False, "expected the received messages were sent by source"
 
                 # their sent messages are received by the TTL as seen from the sources
                 for m in source.sent_log.log[self.shard_ID]:  # inefficient
@@ -390,28 +437,29 @@ class Block:
                         continue
                     # a message incoming (but not yet received) to this shard is expired if...
                     if m.base.height + m.TTL <= self.height:
-                        return False, "expected all expired messages in source to be recieved, shard_ID: %s, ID: %s, bheight: %s, sheight: %s (2)" % (self.shard_ID, ID, m.base.height, self.height)
+                        return False, "expected all expired messages in source to be recieved"
 
                 # our sent messages are received by the TTL as seen from our sources
                 for m in self.sent_log.log[ID]:  # inefficient
                     if m in source.received_log.log[self.shard_ID]:
                         continue
                     # a message outgoing from this shard that hasn't been received is expired if...
+                    # print(m.base.height + m.TTL, source.height)
                     if m.base.height + m.TTL <= source.height:
-                        return False, "expected all expired sent messages to be received by source, shard_ID: %s, ID: %s, bheight: %s, sheight: %s" % (self.shard_ID, ID, m.base.height, source.height)
+                        return False, "expected all expired sent messages to be received by source"
+
         # --------------------------------------------------------------------#
-
-
         # BASE SYNCHRONICITY CONDITIONS
-        for ID in SHARD_IDS:
+        for ID in self.get_neighbors():
             # newly received messages are received by the TTL of the base
             for message in new_received_messages[ID]:
                 if not self.is_in_chain(message.base):
                     return False, "expected only to receive messages with base in chain, my shard id: %s, their shard id: %s" % (self.shard_ID, ID)
                 # Message on received this block are expired if...
                 if message.base.height + message.TTL < self.height:
-                    return False, "message not received within TTL of its base, shard_ID: %s, ID: %s" % (self.shard_ID, ID)
+                    return False, "message not received within TTL of its base"
 
+            # questionable validity condition
             # our sent messages are received by the TTL as seen from our bases
             for m1 in self.sent_log.log[ID]:  # super inefficient
                 for m2 in self.sent_log.log[ID]:
@@ -420,18 +468,19 @@ class Block:
                     # m1 from this shard that hasn't been received by m2.base, and is expired if...
                     if m1.base.height + m1.TTL <= m2.base.height:
                             return False, "expected sent messages to be received by the TTL"
+
         # --------------------------------------------------------------------#
-
-
-        # ALL RECEIVED MESSASGES THAT DO NOT TARGET THIS SHARD MUST BE REROUTED
+        # ALL RECEIVED MESSAGES THAT DO NOT TARGET THIS SHARD MUST BE REROUTED
         payloads_to_reroute = []
-        for ID in SHARD_IDS:
+        payloads = []
+        for ID in self.get_neighbors():
             for message in new_received_messages[ID]:
                 if message.target_shard_ID != self.shard_ID:
-                    assert message.payload not in payloads_to_reroute
+                    assert message.payload not in payloads
+                    payloads.append(message.payload)
                     payloads_to_reroute.append((message.target_shard_ID, message.TTL, message.payload))
 
-        for ID in SHARD_IDS:
+        for ID in self.get_neighbors():
             for message in new_sent_messages[ID]:
                 key = (message.target_shard_ID, message.TTL, message.payload)
                 if key in payloads_to_reroute:
@@ -439,7 +488,7 @@ class Block:
 
         if len(payloads_to_reroute):
             return False, "%s messages were not rerouted" % len(payloads_to_reroute)
-                
+
         # --------------------------------------------------------------------#
 
         # made it!

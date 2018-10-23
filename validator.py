@@ -160,7 +160,7 @@ class Validator:
             switch_block = True
         else:  # look at sent messages of prevblock's neighbors
             neighbor_shard_IDs = prevblock.get_neighbors()
-            old_neighbor_sources = prevblock.sources
+            old_neighbor_sources = copy.deepcopy(prevblock.sources)
             for ID in neighbor_shard_IDs:
                 old_neighbor_sources[ID] = self.make_fork_choice(ID)
                 assert old_neighbor_sources[ID].is_in_chain(prevblock.sources[ID]), "expected monotonic sources - error 0"

@@ -113,7 +113,7 @@ def init_plt(figsize=(30,20)):
 
 
 
-def report(watcher, round_number):
+def report(watcher, round_number, genesis_blocks):
     plt.clf()
 
     # OUTSIDE BORDER BOX
@@ -141,7 +141,7 @@ def report(watcher, round_number):
     ShardBorder = nx.Graph();
 
     # The position of the shards may vary, so we get them from the fork choice:
-    fork_choice = watcher.make_all_fork_choices()
+    fork_choice = watcher.make_all_fork_choices(genesis_blocks)
     print("vvvvvvv")
     for k, v in fork_choice.items():
         print("%s => %s, %s, %s" % (k, v.parent_ID, v.child_IDs, v.routing_table))

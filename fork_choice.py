@@ -18,74 +18,70 @@ def is_block_filtered(child, parent_fork_choice=None):
     assert isinstance(parent_fork_choice, Block), "Expected parent fork choice to be a block"
 
     parent_ID = parent_fork_choice.shard_ID
-    assert parent_ID == child.prevblock.parent_ID, "Expected parent fork choice to be on the parent shard of the prevblock"
+    assert parent_ID == child.parent_ID, "Expected parent fork choice to be on the parent shard of the prevblock"
 
     child_ID = child.shard_ID
 
-
-    # Filter blocks whose sources don't agree with parent fork choice:
-    if not parent_fork_choice.is_in_chain(child.sources[parent_ID]):
-        return True
-
-    # Filter children who disagree with sources of the parent
-    if not child.agrees(parent_fork_choice.sources[child_ID]):
-        return True
-
     # Filter blocks that send messages that are not received and expired in parent fork choice
-    for shard_message in child.sent_log.log[parent_ID]:
+    for shard_message in child.sent_log[parent_ID]:
         if not parent_fork_choice.is_in_chain(shard_message.base):  # children should never point ahead of the parent fork choice
             return True
 
-        if shard_message not in parent_fork_choice.received_log.log[child_ID]:
+        if shard_message not in parent_fork_choice.received_log[child_ID]:
             if shard_message.base.height + shard_message.TTL <= parent_fork_choice.height:
                 return True
 
     # Filter blocks that haven't received all expired messages from parent fork choice
-    for shard_message in parent_fork_choice.sent_log.log[child_ID]:
+    for shard_message in parent_fork_choice.sent_log[child_ID]:
         if not child.agrees(shard_message.base):  # Agrees allows the children to get ahead of the fork choice
            return True
 
-        if shard_message not in child.received_log.log[parent_ID]:
+        if shard_message not in child.received_log[parent_ID]:
             if shard_message.base.height + shard_message.TTL <= child.height:
                 return True
 
     return False
 
 
-# maybe consider mandating in blocks.py that a block's source needs to be at least one block later than the previous source.
-# i.e. the same source is invalid. This is necessary to make a new block that makes process but not to make a valid block.
-# we can use only ghost on valid blocks if we never make progress, no need to filter (validity is enough) ?
+# now going to "give" all blocks weights, blocks without weights don't get their weight added in (basically weight 0)
+def fork_choice(starting_block, blocks, block_weights, genesis_blocks, up_to_height=None):
+    if up_to_height == starting_block.height:
+        return starting_block
 
-# Returns children of a block tht are not in the filter
-def filtered_children(block, blocks, parent_fork_choice=None):
-    children = []
-    if parent_fork_choice is not None:
-        for b in blocks:
-            if b.prevblock is not None:
-                if b.prevblock == block and not is_block_filtered(b, parent_fork_choice):
-                    children.append(b)
-    else:
-        for b in blocks:
-            if b.prevblock is not None:
-                if b.prevblock == block:
-                    children.append(b)
+    # get filtered children
+    children = [b for b in [b for b in blocks if b.prevblock is not None] if b.prevblock == starting_block]
 
-    return children
+    filter_child = {}
+    for c in children:
+        filter_child[c] = False
 
-# Returns an unfiltered child with maximum score
-# The score of a block is the total weight of weighted blocks that agree
-def filtered_best_child(parent_block, blocks, block_weights, parent_fork_choice=None):
-    good_children = filtered_children(parent_block, blocks, parent_fork_choice)
+    for c in children:
+        if c.parent_ID is None:
+            break
+
+        # filter condition for sources:
+        source_height = c.sources[c.parent_ID].height
+        parent_fork_choice_until_source = fork_choice(genesis_blocks[c.parent_ID], blocks, block_weights, genesis_blocks, source_height)
+        if not c.sources[c.parent_ID].agrees(parent_fork_choice_until_source):
+            filter_child[c] = True
+
+        potential_parent_fork_choices = [b for b in blocks if b.is_in_chain(c.sources[c.parent_ID])]
+        # filter condition for the TTL
+        for b in potential_parent_fork_choices:
+            if is_block_filtered(c, b):
+                filter_child[c] = True
+                break
+    children = [c for c in children if not filter_child[c]]
 
     # If there are no children, we just return the function's input
-    if len(good_children) == 0:
-        return parent_block
+    if len(children) == 0:
+        return starting_block
 
     # scorekeeping stuff
     max_score = 0
-    winning_child = good_children[0]
+    winning_child = children[0]
 
-    for c in good_children:
+    for c in children:
 
         # calculates sum of agreeing weight
         score = 0
@@ -98,17 +94,7 @@ def filtered_best_child(parent_block, blocks, block_weights, parent_fork_choice=
             winning_child = c
             max_score = score
 
-    return winning_child
-
-# now going to "give" all blocks weights, blocks without weights don't get their weight added in (basically weight 0)
-def fork_choice(starting_block, blocks, block_weights):
-    if starting_block.parent_ID is None:
-        winning_child = filtered_best_child(starting_block, blocks, block_weights)
-    else:
-        parent_fork_choice = fork_choice(starting_block.sources[starting_block.parent_ID], blocks, block_weights)
-        winning_child = filtered_best_child(starting_block, blocks, block_weights, parent_fork_choice)
-
     if winning_child == starting_block:
-        return winning_child
+        return starting_block
 
-    return fork_choice(winning_child, blocks, block_weights)
+    return fork_choice(winning_child, blocks, block_weights, genesis_blocks, up_to_height)

@@ -81,46 +81,17 @@ class SwitchMessage_ChangeParent(Message):
     def __eq__(self, message):
         return self.hash == message.hash
 
-
-class MessagesLog:
-    def __init__(self):
-        self.log = dict.fromkeys(SHARD_IDS)
-        for ID in SHARD_IDS:
-            self.log[ID] = []
-
-    def add_message(self, shard_ID, message):
-        assert shard_ID in SHARD_IDS, "expected shard ID"
-        assert isinstance(message, Message), "expected message"
-        self.log[shard_ID].append(message)
-
-    def add_messages(self, shard_IDs, messages):
-        for i in range(len(shard_IDs)):
-            self.add_message(shard_IDs[i], messages[i])
-        return self
-
-    def append_MessagesLog(self, log):
-        assert isinstance(log, MessagesLog), "expected messages log"
-
-        new_log = MessagesLog()
-
-        for ID in SHARD_IDS:
-            for l in self.log[ID]:
-                new_log.log[ID].append(l)
-
-        for ID in SHARD_IDS:
-            for l in log.log[ID]:
-                new_log.log[ID].append(l)
-
-        return new_log
-
-
-
 class Block:
-    def __init__(self, ID, prevblock=None, switch_block=False, txn_log=[], sent_log=None, received_log=None, sources=None, parent_ID=None, child_IDs=None, routing_table=None, vm_state=genesis_state):
-        if sent_log is None:
-            sent_log = MessagesLog()
-        if received_log is None:
-            received_log = MessagesLog()
+    def __init__(self, ID, prevblock=None, switch_block=False, txn_log=[], sent_log={}, received_log={}, sources=None, parent_ID=None, child_IDs=None, routing_table=None, vm_state=genesis_state):
+
+        if sent_log == {}:
+            for i in SHARD_IDS:
+                sent_log[i] = []
+
+        if received_log == {}:
+            for i in SHARD_IDS:
+                received_log[i] = []
+
         assert sources is not None
 
         assert ID in SHARD_IDS, "expected shard ID"
@@ -129,7 +100,13 @@ class Block:
         self.switch_block = switch_block
         self.txn_log = txn_log
         self.sent_log = sent_log
+        for i in SHARD_IDS:
+            if i not in self.sent_log.keys():
+                sent_log[i] = []
         self.received_log = received_log
+        for i in SHARD_IDS:
+            if i not in self.received_log.keys():
+                received_log[i] = []
         self.sources = sources
         self.vm_state = vm_state
         self.parent_ID = parent_ID
@@ -199,11 +176,10 @@ class Block:
         return neighbors
 
     def first_block_with_message_in_sent_log(self, ID, message):
-        assert message in self.sent_log.log[ID]
-        print("len(self.sent_log.log[ID]",len(self.sent_log.log[ID]))
+        assert message in self.sent_log[ID]
         if self.prevblock is None:
             return self
-        if message not in self.prevblock.sent_log.log[ID]:
+        if message not in self.prevblock.sent_log[ID]:
             return self
         else:
             return self.prevblock.first_block_with_message_in_sent_log(ID, message)
@@ -219,15 +195,15 @@ class Block:
         new_sent = dict.fromkeys(SHARD_IDS)
         for ID in self.get_neighbors():
             new = []
-            num_sent = len(self.sent_log.log[ID])
+            num_sent = len(self.sent_log[ID])
             if self.prevblock is not None:
-                prev_num_sent = len(self.prevblock.sent_log.log[ID])
+                prev_num_sent = len(self.prevblock.sent_log[ID])
             else:
                 prev_num_sent = 0
             num_new_sent = num_sent - prev_num_sent
             assert num_new_sent >= 0, "expected growing sent log"
             for i in range(num_new_sent):
-                new.append(self.sent_log.log[ID][prev_num_sent + i])
+                new.append(self.sent_log[ID][prev_num_sent + i])
             new_sent[ID] = new
 
         return new_sent
@@ -236,15 +212,15 @@ class Block:
         new_received = {}
         for ID in self.get_neighbors():
             new = []
-            num_received = len(self.received_log.log[ID])
+            num_received = len(self.received_log[ID])
             if self.prevblock is not None:
-                prev_num_received = len(self.prevblock.received_log.log[ID])
+                prev_num_received = len(self.prevblock.received_log[ID])
             else:
                 prev_num_received = 0
             num_new_received = num_received - prev_num_received
             assert num_new_received >= 0, "expected growing received log, shard_ID: %s, ID: %s, was: %s, now: %s" % (self.shard_ID, ID, prev_num_received, num_received)
             for i in range(num_new_received):
-                new.append(self.received_log.log[ID][prev_num_received + i])
+                new.append(self.received_log[ID][prev_num_received + i])
             new_received[ID] = new
 
         return new_received
@@ -272,9 +248,9 @@ class Block:
         if self.prevblock is not None:
             if not isinstance(self.prevblock, Block):
                 return False, "expected prevblock to be a block"
-        if not isinstance(self.sent_log, MessagesLog):
+        if not isinstance(self.sent_log, dict):
             return False, "expected sent log"
-        if not isinstance(self.received_log, MessagesLog):
+        if not isinstance(self.received_log, dict):
             return False, "expected received_log"
         # if not isinstance(self.VM_state, EVM_State):
         #    return False, "expected an EVM State"
@@ -288,7 +264,6 @@ class Block:
         # we're going to need these over and over again:
         new_sent_messages = self.newly_sent()
         new_received_messages = self.newly_received()
-
 
         saw_switch_messages = False
         for msg in new_sent_messages.items():
@@ -348,26 +323,27 @@ class Block:
                     return False, "expected current txn log to be an extension of the previous -- error 3"
 
             # previous sent log is a prefix of current sent log
-            prev_num_sent = len(self.prevblock.sent_log.log[ID])
-            new_num_sent = len(self.sent_log.log[ID])
+            prev_num_sent = len(self.prevblock.sent_log[ID])
+            new_num_sent = len(self.sent_log[ID])
             if new_num_sent < prev_num_sent:
                 return False, "expected current sent log to be an extension of the previous -- error 1"
             for i in range(prev_num_sent):
-                if self.prevblock.sent_log.log[ID][i] != self.sent_log.log[ID][i]:
+                if self.prevblock.sent_log[ID][i] != self.sent_log[ID][i]:
                     return False, "expected current sent log to be an extension of the previous -- error 2"
 
             # previous received log is a prefix of current received log
-            prev_num_received = len(self.prevblock.received_log.log[ID])
-            new_num_received = len(self.received_log.log[ID])
+            prev_num_received = len(self.prevblock.received_log[ID])
+            new_num_received = len(self.received_log[ID])
             if new_num_received < prev_num_received:
                 return False,  "expected current received log to be an extension of the previous -- error 1"
             for i in range(prev_num_received):
-                if self.prevblock.received_log.log[ID][i] != self.received_log.log[ID][i]:
-                    return False, "expected current received log to be an extension of the previous -- error 2, shard_ID: %s, log shard ID: %s, old length: %s, new_length: %s, items: %s <> %s, pos: %s" % (self.shard_ID, ID, len(self.prevblock.received_log.log[ID]), len(self.received_log.log[ID]), format_msg(self.prevblock.received_log.log[ID][i]), format_msg(self.received_log.log[ID][i]), i)
+                if self.prevblock.received_log[ID][i] != self.received_log[ID][i]:
+                    return False, "expected current received log to be an extension of the previous -- error 2, shard_ID: %s, log shard ID: %s, old length: %s, new_length: %s, items: %s <> %s, pos: %s" % (self.shard_ID, ID, len(self.prevblock.received_log[ID]), len(self.received_log[ID]), format_msg(self.prevblock.received_log
+                        [ID][i]), format_msg(self.received_log[ID][i]), i)
 
             # bases of sent messages are monotonic
-            if len(self.prevblock.sent_log.log[ID]) > 0:
-                last_old_sent_message = self.prevblock.sent_log.log[ID][-1]
+            if len(self.prevblock.sent_log[ID]) > 0:
+                last_old_sent_message = self.prevblock.sent_log[ID][-1]
                 first_time = True
                 for message in new_sent_messages[ID]:
                     if first_time:
@@ -382,8 +358,8 @@ class Block:
                         return False, "expected bases to be monotonic -- error 1"
 
             # bases of received messages are monotonic
-            if len(self.prevblock.received_log.log[ID]) > 0:
-                last_old_received_message = self.prevblock.received_log.log[ID][-1]
+            if len(self.prevblock.received_log[ID]) > 0:
+                last_old_received_message = self.prevblock.received_log[ID][-1]
                 first_time = True
                 for message in new_received_messages[ID]:
                     if first_time:
@@ -403,7 +379,7 @@ class Block:
                 # ... easier to check than agreement between bases and sources,
                 # ... also easy for a block producer to enforce
                 source = self.sources[ID]
-                if len(self.prevblock.sent_log.log[ID]) > 0:
+                if len(self.prevblock.sent_log[ID]) > 0:
                     base = last_old_sent_message.base  # most recent base from prev block
                     if not source.agrees(base):  # source is after ^^
                         return False, "expected bases to be in the chain of sources -- error 1"
@@ -425,23 +401,21 @@ class Block:
                 source = self.sources[ID]
 
                 # check that the received messages are sent by the source
-                print("len(self.received_log.log[ID])",len(self.received_log.log[ID]))
-                print("len(source.sent_log.log[self.shard_ID])",len(source.sent_log.log[self.shard_ID]))
-                for i in range(len(self.received_log.log[ID])):  # warning: inefficient
-                    if self.received_log.log[ID][i] != source.sent_log.log[self.shard_ID][i]:
+                for i in range(len(self.received_log[ID])):  # warning: inefficient
+                    if self.received_log[ID][i] != source.sent_log[self.shard_ID][i]:
                         return False, "expected the received messages were sent by source"
 
                 # their sent messages are received by the TTL as seen from the sources
-                for m in source.sent_log.log[self.shard_ID]:  # inefficient
-                    if m in self.received_log.log[ID]:
+                for m in source.sent_log[self.shard_ID]:  # inefficient
+                    if m in self.received_log[ID]:
                         continue
                     # a message incoming (but not yet received) to this shard is expired if...
                     if m.base.height + m.TTL <= self.height:
                         return False, "expected all expired messages in source to be recieved"
 
                 # our sent messages are received by the TTL as seen from our sources
-                for m in self.sent_log.log[ID]:  # inefficient
-                    if m in source.received_log.log[self.shard_ID]:
+                for m in self.sent_log[ID]:  # inefficient
+                    if m in source.received_log[self.shard_ID]:
                         continue
                     # a message outgoing from this shard that hasn't been received is expired if...
                     # print(m.base.height + m.TTL, source.height)
@@ -461,9 +435,9 @@ class Block:
 
             # questionable validity condition
             # our sent messages are received by the TTL as seen from our bases
-            for m1 in self.sent_log.log[ID]:  # super inefficient
-                for m2 in self.sent_log.log[ID]:
-                    if m1 in m2.base.received_log.log[self.shard_ID]:
+            for m1 in self.sent_log[ID]:  # super inefficient
+                for m2 in self.sent_log[ID]:
+                    if m1 in m2.base.received_log[self.shard_ID]:
                         continue
                     # m1 from this shard that hasn't been received by m2.base, and is expired if...
                     if m1.base.height + m1.TTL <= m2.base.height:

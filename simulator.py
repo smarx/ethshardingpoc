@@ -20,11 +20,15 @@ def add_switch_message(parent_shard, child_to_become_parent, child_to_move_down,
 # Setup
 GENESIS_BLOCKS = {}
 GENESIS_MESSAGES = []
+print("SHARD_IDS", SHARD_IDS)
 for ID in SHARD_IDS:
     GENESIS_BLOCKS[ID] = Block(ID, sources={}) # temporarily set sources to {}, since genesis blocks are not known yet
+    print("GENESIS_BLOCKS[ID].shard_ID")
+    print("ID", ID)
+    print(GENESIS_BLOCKS[ID].shard_ID)
     GENESIS_MESSAGES.append(ConsensusMessage(GENESIS_BLOCKS[ID], 0, []))  # The watcher is the sender of the genesis blocks
     for ID2 in SHARD_IDS:
-        print("len(GENESIS_BLOCKS[ID].sent_log.log[ID2]", len(GENESIS_BLOCKS[ID].sent_log.log[ID2]))
+        print("len(GENESIS_BLOCKS[ID].sent_log.log[ID2]", len(GENESIS_BLOCKS[ID].sent_log[ID2]))
 
 
 for ID in SHARD_IDS:
@@ -158,4 +162,4 @@ for i in range(NUM_ROUNDS):
     if i == 0:
         init_plt(FIG_SIZE)
     if (i + 1) % REPORT_INTERVAL == 0:
-        report(watcher, i)
+        report(watcher, i, GENESIS_BLOCKS)

@@ -37,10 +37,9 @@ def convert_state_to_pre(state):
 #   `MessagePayload`s. (This is done via `web3.eth.account.signTransaction(…)`.)
 # function apply(vm_state, [tx], mapping(S => received)) -> (vm_state, mapping(S => received) )
 def apply_to_state(pre_state, tx, received_log, genesis_blocks):
-    assert isinstance(received_log, MessagesLog), "expected received log"
     # print(pre_state["pre"][address]["nonce"])   
     nonce = int(pre_state["pre"][pusher_address]["nonce"], 0)
-    flattened_payloads = [message.payload for l in received_log.log.values() for message in l]
+    flattened_payloads = [message.payload for l in received_log.values() for message in l]
     for payload in flattened_payloads:
         transaction = {
             "gas": 3000000,
@@ -78,15 +77,16 @@ def apply_to_state(pre_state, tx, received_log, genesis_blocks):
             account[key] = "0x" + account[key]
 
     # look through logs for outgoing messages
-    sent_log = MessagesLog()
+    sent_log = {}
+    for ID in SHARD_IDS:
+        sent_log[ID] = []
     for receipt in result.get('receipts', []):
         if receipt['logs'] is not None:
             for log in receipt['logs']:
                 log['topics'] = [binascii.unhexlify(t[2:]) for t in log['topics']]
                 log['data'] = binascii.unhexlify(log['data'][2:])
             for event in contract.events.SentMessage().processReceipt(receipt):
-                sent_log.add_message(
-                    event.args.shard_ID,
+                sent_log[event.args.shard_ID].append(
                     # This is not a message that will be stored in the sent log, it will be
                     # postprocessed in make_block. Namely, the next hop shard will be computed,
                     # the base block will be computed and TTL will be assigned.
@@ -102,6 +102,7 @@ def apply_to_state(pre_state, tx, received_log, genesis_blocks):
                         )
                     )
                 )
+
     return new_state, sent_log
 
 # received_log = ReceivedLog()
@@ -117,4 +118,4 @@ def apply_to_state(pre_state, tx, received_log, genesis_blocks):
 # ))
 # new_state, sent_log = apply_to_state(vm_state, transactions, received_log)
 # print(json.dumps(new_state))
-# print(sent_log.log)
+# print(sent_log)

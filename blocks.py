@@ -211,7 +211,7 @@ class Block:
     def newly_received(self):
         new_received = {}
         for ID in self.get_neighbors():
-            new = []
+            new_received[ID] = []
             num_received = len(self.received_log[ID])
             if self.prevblock is not None:
                 prev_num_received = len(self.prevblock.received_log[ID])
@@ -220,8 +220,7 @@ class Block:
             num_new_received = num_received - prev_num_received
             assert num_new_received >= 0, "expected growing received log, shard_ID: %s, ID: %s, was: %s, now: %s" % (self.shard_ID, ID, prev_num_received, num_received)
             for i in range(num_new_received):
-                new.append(self.received_log[ID][prev_num_received + i])
-            new_received[ID] = new
+                new_received[ID].append(self.received_log[ID][prev_num_received + i])
 
         return new_received
 
@@ -403,7 +402,7 @@ class Block:
                 # check that the received messages are sent by the source
                 for i in range(len(self.received_log[ID])):  # warning: inefficient
                     if self.received_log[ID][i] != source.sent_log[self.shard_ID][i]:
-                        return False, "expected the received messages were sent by source"
+                        return False, "expected the received messages to be sent by source"
 
                 # their sent messages are received by the TTL as seen from the sources
                 for m in source.sent_log[self.shard_ID]:  # inefficient

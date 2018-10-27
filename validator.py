@@ -325,7 +325,6 @@ class Validator:
         receiving_opcode = False
         # --------------------------------------------------------------------#
         # BUILD RECEIVED LOG WITH:
-        new_received_log = {}
         newly_received_messages = {}
         for ID in SHARD_IDS:
             newly_received_messages[ID] = []
@@ -333,34 +332,33 @@ class Validator:
             if ID == shard_ID:
                 continue
 
-            if ID not in newly_received_messages.keys():
-                newly_received_messages[ID] = []
-
-            new_received_log[ID] = copy.deepcopy(prevblock.received_log[ID])
-            while(len(new_received_log[ID]) < len(new_sources[ID].sent_log[shard_ID])):
-                log_length = len(new_received_log[ID])
-                new_message = new_sources[ID].sent_log[shard_ID][log_length]
-
+            prev_received_log_length = len(prevblock.received_log[ID])
+            while(len(newly_received_messages[ID]) < len(new_sources[ID].sent_log[shard_ID]) - prev_received_log_length):
+                log_length = len(newly_received_messages[ID])
+                new_message = new_sources[ID].sent_log[shard_ID][log_length + prev_received_log_length]
                 if isinstance(new_message, SwitchMessage_BecomeAParent) or isinstance(new_message, SwitchMessage_ChangeParent):
                     break  #but only receive messages up to the first switch opcod
 
-                new_received_log[ID].append(new_message)
                 newly_received_messages[ID].append(new_message)
 
+
+
+        new_received_log = {}
+        for ID in SHARD_IDS:
+            new_received_log[ID] = prevblock.received_log[ID] + newly_received_messages[ID]
 
         # --------------------------------------------------------------------#
 
         # BUILD NEW SENT MESSAGES
         new_sent_messages = {}  # for now we're going to fill this with routed messages
+        for ID in SHARD_IDS:
+            new_sent_messages[ID] = []
         newly_received_payloads = {}  # destined for this shard's evm
+        for ID in SHARD_IDS:
+            newly_received_payloads[ID] = []
 
         # ROUTING
         for ID in neighbor_shard_IDs:
-            new_sent_messages[ID] = []
-            newly_received_messages[ID] = []
-            if ID not in newly_received_messages.keys():
-                continue
-
             for m in newly_received_messages[ID]:
                 if m.target_shard_ID == shard_ID:
                     if isinstance(m, SwitchMessage_BecomeAParent):
@@ -369,7 +367,6 @@ class Validator:
                         continue
                     else:
                         newly_received_payloads[ID].append(m)
-
                 else:
                     next_hop_ID = self.next_hop(new_routing_table, m.target_shard_ID)
                     if next_hop_ID is not None:
@@ -378,7 +375,6 @@ class Validator:
                         next_hop_ID = new_parent_ID
                     assert next_hop_ID is not None
                     new_sent_messages[next_hop_ID].append(Message(new_sources[next_hop_ID], m.TTL, m.target_shard_ID, m.payload))
-
 
 
         # --------------------------------------------------------------------#
@@ -391,13 +387,14 @@ class Validator:
 
         new_vm_state, new_outgoing_payloads = apply_to_state(prevblock.vm_state, data, newly_received_payloads, genesis_blocks)
 
+
         # --------------------------------------------------------------------#
 
         # print("OUTGOING PAYLOAD LENGTH", len(new_outgoing_payloads.values()))
         # BUILD SENT LOG FROM NEW OUTGOING PAYLOADS
         # by this time new_sent_messages might already have some messages from rerouting above
-        for ID in neighbor_shard_IDs:
-            if ID != shard_ID and ID in new_outgoing_payloads.keys():
+        for ID in SHARD_IDS:
+            if ID != shard_ID:
                 for m in new_outgoing_payloads[ID]:
                     # print("HERE !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!")
                     first_hop_ID = self.next_hop(new_routing_table, ID)
@@ -408,25 +405,21 @@ class Validator:
                     assert first_hop_ID is not None
                     new_sent_messages[first_hop_ID].append(Message(new_sources[first_hop_ID], TTL, ID, m.payload))
 
+
         SUM = 0
         for k in new_sent_messages.keys():
             SUM += len(new_sent_messages[k])
         # print("NUM NEW SENT: ", SUM)
 
-        new_new_sent_log = {}
-        new_new_sent_log = copy.deepcopy(new_sent_log)
-
+        new_sent_log = {}
         for ID in SHARD_IDS:
-            if ID not in new_sent_log.keys():
-                new_sent_log[ID] = []
-            if ID not in new_sent_messages.keys():
-                new_sent_messages[ID] = []
-            new_new_sent_log[ID] = new_sent_log[ID] + new_sent_messages[ID]
+            new_sent_log[ID] = prevblock.sent_log[ID] + new_sent_messages[ID]
+
 
         # MAKE BLOCK AND CHECK VALIDITY
         # Block(ID, prevblock=None, txn_log=[], sent_log=None, received_log=None, sources=None, parent_ID=None, child_IDs=None, routing_table=None, vm_state=genesis_state):
 
-        ret = Block(shard_ID, prevblock, False, new_txn_log, new_new_sent_log, new_received_log, new_sources, new_parent_ID, new_child_IDs, new_routing_table, new_vm_state)
+        ret = Block(shard_ID, prevblock, False, new_txn_log, new_sent_log, new_received_log, new_sources, new_parent_ID, new_child_IDs, new_routing_table, new_vm_state)
 
         assert not ret.switch_block
 
@@ -443,7 +436,7 @@ class Validator:
             print("self.sent_log", new_sent_log)
             print("---------------------------------------------------------")
             print("---------------------------------------------------------")
-            print("self.received_log", new_received_log)
+            print("self.received_log", newly_received_messages)
             print("---------------------------------------------------------")
             print("---------------------------------------------------------")
             print("---------------------------------------------------------")
@@ -457,7 +450,7 @@ class Validator:
             print("self.sent_log", new_sent_log)
             print("---------------------------------------------------------")
             print("---------------------------------------------------------")
-            print("self.received_log", new_received_log)
+            print("self.received_log", newly_received_messages)
             print("---------------------------------------------------------")
             print("---------------------------------------------------------")
             print("receiving_opcode: ", receiving_opcode)

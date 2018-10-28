@@ -18,7 +18,7 @@ def is_block_filtered(child, parent_fork_choice=None):
     assert isinstance(parent_fork_choice, Block), "Expected parent fork choice to be a block"
 
     parent_ID = parent_fork_choice.shard_ID
-    assert parent_ID == child.parent_ID, "Expected parent fork choice to be on the parent shard of the prevblock"
+    assert parent_ID == child.prevblock.parent_ID, "Expected parent fork choice to be on the parent shard of the prevblock"
 
     child_ID = child.shard_ID
 

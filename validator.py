@@ -146,15 +146,15 @@ class Validator:
         global BLOCKS
 
         # First, the previous block pointer:
-        prevblock = self.make_fork_choice(shard_ID, genesis_blocks)
+        prevblock = copy.deepcopy(self.make_fork_choice(shard_ID, genesis_blocks))
         assert prevblock.shard_ID == shard_ID, "expected consistent IDs"
 
-        new_received_log = prevblock.received_log
+        new_received_log = {}
         new_sources = {}
-        new_sent_log = prevblock.sent_log
-        new_routing_table = prevblock.routing_table
-        new_parent_ID = prevblock.parent_ID
-        new_child_IDs = prevblock.child_IDs
+        new_sent_log = {}
+        new_routing_table = copy.deepcopy(prevblock.routing_table)
+        new_parent_ID = copy.copy(prevblock.parent_ID)
+        new_child_IDs = copy.copy(prevblock.child_IDs)
 
         # --------------------------------------------------------------------#
         # This part determines whether our block is a switch block:
@@ -179,6 +179,12 @@ class Validator:
         else:  
             # look at sent messages of prevblock's neighbors
             neighbor_shard_IDs = prevblock.get_neighbors()
+            print("prevblock.get_neighbors()")
+            print(prevblock.get_neighbors())
+            print("prevblock.parent_ID")
+            print(prevblock.parent_ID)
+            print("prevblock.child_IDs")
+            print(prevblock.child_IDs)
             temp_new_sources = {}
             for ID in SHARD_IDS:
                 if ID not in neighbor_shard_IDs:
@@ -236,7 +242,10 @@ class Validator:
 
                     msg1 = SwitchMessage_BecomeAParent(child_source, TTL_CONSTANT, child_to_become_parent, shard_to_move_down, root_fork_choice)
 
-                    new_sent_log[child_to_become_parent].append(msg1)
+                    new_sent_log[child_to_become_parent] = prevblock.sent_log[child_to_become_parent] + [msg1]
+                    for ID in SHARD_IDS:
+                        if ID != child_to_become_parent:
+                            new_sent_log[ID] = prevblock.sent_log[ID]
 
                     new_child_IDs = []
                     new_parent_ID = child_to_become_parent
@@ -256,8 +265,12 @@ class Validator:
                     msg2 = SwitchMessage_ChangeParent(fork_choice_of_child_to_move_down, TTL_CONSTANT, child_to_move_down, child_to_become_parent, fork_choice_of_child_to_become_parent)
 
                     # they have the switch messages in the sent message queues
-                    new_sent_log[child_to_become_parent].append(msg1)
-                    new_sent_log[child_to_move_down].append(msg2)
+                    new_sent_log[child_to_become_parent] = prevblock.sent_log[child_to_become_parent] + [msg1]
+                    new_sent_log[child_to_move_down] = prevblock.sent_log[child_to_move_down] + [msg2]
+
+                    for ID in SHARD_IDS:
+                        if ID != child_to_move_down and ID != child_to_become_parent:
+                            new_sent_log[ID] = prevblock.sent_log[ID]
 
                     # removing child from the switch block
                     new_child_IDs.remove(child_to_move_down)
@@ -280,7 +293,7 @@ class Validator:
                 for i in range(100000):
                     print("SWITCHMSG")
 
-                new_received_log[switch_source_ID].append(switch_message)
+                new_received_log[switch_source_ID] = prevblock.received_log[switch_source_ID] + [switch_message]
 
                 new_sources[1 - switch_source_ID] = prevblock.sources[1 - switch_source_ID]
                 new_sources[switch_source_ID] = switch_source.first_block_with_message_in_sent_log(shard_ID, switch_message)
@@ -294,16 +307,17 @@ class Validator:
                 # assert new_sources[switch_source_ID].switch_block
 
                 if isinstance(switch_message, SwitchMessage_BecomeAParent):
-                    new_child_IDs.append(switch_message.new_child_ID)
+                    if switch_message.new_child_ID not in new_child_IDs:
+                        new_child_IDs.append(switch_message.new_child_ID)
                     for ID in switch_message.new_child_source.routing_table.keys():
                         new_routing_table[ID] = switch_message.new_child_ID
-                elif isinstance(switch_message, SwitchMessage_ChangeParent):
-                    new_parent_ID = switch_message.new_parent_ID
 
-                # new_txn_log unchanged
+                new_parent_ID = None
+
+                new_txn_log = prevblock.txn_log
                 # new_sent_log unchanged    
 
-            new_block = Block(shard_ID, prevblock, True, prevblock.txn_log, new_sent_log, new_received_log, new_sources, new_parent_ID, new_child_IDs, new_routing_table, prevblock.vm_state)
+            new_block = Block(shard_ID, prevblock, True, new_txn_log, new_sent_log, new_received_log, new_sources, new_parent_ID, new_child_IDs, new_routing_table, prevblock.vm_state)
 
             assert new_block.switch_block
             print("new_block", new_block)

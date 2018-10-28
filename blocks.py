@@ -59,7 +59,7 @@ class SwitchMessage_BecomeAParent(Message):
         super(SwitchMessage_BecomeAParent, self).__init__(base, TTL, target_shard_ID, None)
         self.new_child_ID = new_child_ID
         self.new_child_source = new_child_source
-        self.hash = rand.randint(1, 10000000)       
+        self.hash = rand.randint(1, 1000000)
 
     def __hash__(self):
         return self.hash
@@ -73,7 +73,7 @@ class SwitchMessage_ChangeParent(Message):
         super(SwitchMessage_ChangeParent, self).__init__(base, TTL, target_shard_ID, None)
         self.new_parent_ID = new_parent_ID
         self.new_parent_source = new_parent_source
-        self.hash = rand.randint(1, 10000000)       
+        self.hash = rand.randint(1, 1000000)       
 
     def __hash__(self):
         return self.hash
@@ -82,7 +82,7 @@ class SwitchMessage_ChangeParent(Message):
         return self.hash == message.hash
 
 class Block:
-    def __init__(self, ID, prevblock=None, switch_block=False, txn_log=[], sent_log={}, received_log={}, sources=None, parent_ID=None, child_IDs=None, routing_table=None, vm_state=genesis_state):
+    def __init__(self, ID, prevblock=None, switch_block=False, txn_log=[], sent_log={}, received_log={}, sources={}, parent_ID=None, child_IDs=None, routing_table=None, vm_state=genesis_state):
 
         if sent_log == {}:
             for i in SHARD_IDS:
@@ -91,8 +91,6 @@ class Block:
         if received_log == {}:
             for i in SHARD_IDS:
                 received_log[i] = []
-
-        assert sources is not None
 
         assert ID in SHARD_IDS, "expected shard ID"
         self.shard_ID = ID
@@ -165,6 +163,7 @@ class Block:
 
     def agrees(self, block):
         assert isinstance(block, Block), "expected block"
+        assert self.shard_ID == block.shard_ID, "expected to check agreement between blocks on same shard"
         return self.is_in_chain(block) or block.is_in_chain(self)
 
     def get_neighbors(self):

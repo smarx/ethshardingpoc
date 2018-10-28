@@ -22,9 +22,17 @@ def is_block_filtered(child, parent_fork_choice=None):
 
     child_ID = child.shard_ID
 
+    # filter condition for sources:
+    if not parent_fork_choice.is_in_chain(child.sources[parent_ID]):  # c.sources[c.parent_ID] != parent_fork_choice_until_source:
+        return True
+
+    # Fiter blocks that don't agree with parent source for child
+    if not parent_fork_choice.sources[child_ID].agrees(child):
+        return True
+
     # Filter blocks that send messages that are not received and expired in parent fork choice
     for shard_message in child.sent_log[parent_ID]:
-        if not parent_fork_choice.is_in_chain(shard_message.base):  # children should never point ahead of the parent fork choice
+        if not parent_fork_choice.agrees(shard_message.base):
             return True
 
         if shard_message not in parent_fork_choice.received_log[child_ID]:
@@ -33,8 +41,8 @@ def is_block_filtered(child, parent_fork_choice=None):
 
     # Filter blocks that haven't received all expired messages from parent fork choice
     for shard_message in parent_fork_choice.sent_log[child_ID]:
-        if not child.agrees(shard_message.base):  # Agrees allows the children to get ahead of the fork choice
-           return True
+        if not child.agrees(shard_message.base):
+            return True
 
         if shard_message not in child.received_log[parent_ID]:
             if shard_message.base.height + shard_message.TTL <= child.height:
@@ -44,38 +52,55 @@ def is_block_filtered(child, parent_fork_choice=None):
 
 
 # now going to "give" all blocks weights, blocks without weights don't get their weight added in (basically weight 0)
-def fork_choice(starting_block, blocks, block_weights, genesis_blocks, up_to_height=None):
-    if up_to_height == starting_block.height:
-        return starting_block
+
+forks = {}
+already_jumped = []
+
+def update_forks(block):
+    global forks
+    global already_jumped
+
+    if block.is_in_chain(forks[block.shard_ID]):
+        forks[block.shard_ID] = block
+
+        return True
+    else:
+        return False
+
+def fork_choice(target_shard_ID, starting_block, blocks, block_weights, genesis_blocks, first=True, filter_block=None):
+
+    global forks
+    global already_jumped
+    if first:
+        forks = {0 : genesis_blocks[0], 1 : genesis_blocks[1]}
+        already_jumped = []
+
+    if target_shard_ID == 1 and starting_block == genesis_blocks[1] and filter_block is None:
+        return fork_choice(target_shard_ID, forks[0], blocks, block_weights, genesis_blocks,  False)
 
     # get filtered children
     children = [b for b in [b for b in blocks if b.prevblock is not None] if b.prevblock == starting_block]
+    # children of parents with root parent IDs are not filtered
 
-    filter_child = {}
-    for c in children:
-        filter_child[c] = False
+    if starting_block.parent_ID is not None:
 
-    for c in children:
-        if c.parent_ID is None:
-            break
+        filter_child = {}
+        for c in children:
+            filter_child[c] = is_block_filtered(c, filter_block)  # deals with filter_block = None by not filtering
 
-        # filter condition for sources:
-        source_height = c.sources[c.parent_ID].height
-        parent_fork_choice_until_source = fork_choice(genesis_blocks[c.parent_ID], blocks, block_weights, genesis_blocks, source_height)
-        if not c.sources[c.parent_ID].agrees(parent_fork_choice_until_source):
-            filter_child[c] = True
+        children = [c for c in children if not filter_child[c]]
 
-        potential_parent_fork_choices = [b for b in blocks if b.is_in_chain(c.sources[c.parent_ID])]
-        # filter condition for the TTL
-        for b in potential_parent_fork_choices:
-            if is_block_filtered(c, b):
-                filter_child[c] = True
-                break
-    children = [c for c in children if not filter_child[c]]
+    if len(children) == 0 and starting_block.shard_ID == target_shard_ID:
+       return starting_block
 
-    # If there are no children, we just return the function's input
-    if len(children) == 0:
-        return starting_block
+    if len(children) == 0 and starting_block.shard_ID != target_shard_ID:
+        update_forks(starting_block)
+        update_forks(starting_block.sources[target_shard_ID])
+        already_jumped.append(starting_block.sources[target_shard_ID])
+        if starting_block.parent_ID is None:
+            return fork_choice(target_shard_ID, forks[target_shard_ID], blocks, block_weights, genesis_blocks, False, starting_block)
+        else:
+            return fork_choice(target_shard_ID, forks[target_shard_ID], blocks, block_weights, genesis_blocks, False)
 
     # scorekeeping stuff
     max_score = 0
@@ -94,7 +119,15 @@ def fork_choice(starting_block, blocks, block_weights, genesis_blocks, up_to_hei
             winning_child = c
             max_score = score
 
-    if winning_child == starting_block:
-        return starting_block
+    update_forks(winning_child)
 
-    return fork_choice(winning_child, blocks, block_weights, genesis_blocks, up_to_height)
+    # case where we have a switch block winning in the root:
+    if winning_child.switch_block and starting_block.parent_ID is None:
+        update_forks(winning_child.sources[starting_block.child_IDs[0]])
+        return fork_choice(target_shard_ID, forks[starting_block.child_IDs[0]], blocks, block_weights, genesis_blocks, False, winning_child)
+
+    # case where we have a swich block winning in the child
+    if winning_child.switch_block and starting_block.parent_ID is not None:
+        return fork_choice(target_shard_ID, forks[winning_child.shard_ID], blocks, block_weights, genesis_blocks, False)
+
+    return fork_choice(target_shard_ID, forks[winning_child.shard_ID], blocks, block_weights, genesis_blocks, False, filter_block)

@@ -55,22 +55,26 @@ def blocks_by_shard_display_height(blocks):
 
 
 # This function returns a map from height to a list of shards
-def sort_blocks_by_shard_height(block_by_shard):
+def sort_blocks_by_shard_height(fork_choice_by_shard):
 
-    for b in block_by_shard.values():
+    for b in fork_choice_by_shard.values():
         assert isinstance(b, Block), "expected only blocks"
 
-    for ID in block_by_shard.keys():
+    for ID in fork_choice_by_shard.keys():
         assert ID in SHARD_IDS, "expected shard ID"
 
-    blocks_by_height = {}
-    for b in block_by_shard.values():
+    root_shard_tip = None
+    for b in fork_choice_by_shard.values():
         # Root shard has no parent
         if b.parent_ID is None:
             root_shard_tip = b
             break
 
-    ret = recur_sort_shards(block_by_shard, [root_shard_tip], 0, blocks_by_height)
+    fork_choice_by_height = {}
+    if root_shard_tip is not None:
+        ret = recur_sort_shards(fork_choice_by_shard, [root_shard_tip], 0, fork_choice_by_height)
+    else:
+        ret = recur_sort_shards(fork_choice_by_shard, [fork_choice_by_shard[0],fork_choice_by_shard[1]], 0, fork_choice_by_height)
 
     extra_height = max(list(ret.keys())) + 1
     all_shards = [x.shard_ID for x in sum(ret.values(), [])]
@@ -86,7 +90,7 @@ def sort_blocks_by_shard_height(block_by_shard):
 
 # Implements a depth first search of the shard tree
 # The order of the search is determined by 'sorted' of shard_IDs
-def recur_sort_shards(block_by_shard, sorted_children, height, blocks_by_height):
+def recur_sort_shards(fork_choice_by_shard, sorted_children, height, fork_choice_by_height):
     if sorted_children == []:
         return
 
@@ -94,19 +98,19 @@ def recur_sort_shards(block_by_shard, sorted_children, height, blocks_by_height)
         assert isinstance(b, Block), "expected children to be blocks"
 
     for child in sorted_children:
-        if height not in blocks_by_height.keys():
-            blocks_by_height[height] = [child]
+        if height not in fork_choice_by_height.keys():
+            fork_choice_by_height[height] = [child]
         else:
-            blocks_by_height[height].append(child)
+            fork_choice_by_height[height].append(child)
 
         sorted_child_IDs = sorted(child.child_IDs)
         children = []
         for i in range(len(sorted_child_IDs)):
-            children.append(block_by_shard[sorted_child_IDs[i]])
+            children.append(fork_choice_by_shard[sorted_child_IDs[i]])
 
-        recur_sort_shards(block_by_shard, children, height + 1, blocks_by_height)
+        recur_sort_shards(fork_choice_by_shard, children, height + 1, fork_choice_by_height)
 
-    return blocks_by_height
+    return fork_choice_by_height
 
 def init_plt(figsize=(30,20)):
     plt.figure(figsize=(30,20))

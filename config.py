@@ -3,9 +3,9 @@ from web3 import Web3
 import copy
 from collections import defaultdict
 
-FLAG = True
+ORBIT_MODE = True
 
-if FLAG:
+if not ORBIT_MODE:
     INITIAL_TOPOLOGY = [[1, 2], [3, 4], [5], [], [], [6], [7], []]
 else:
     INITIAL_TOPOLOGY = [[1], []]
@@ -40,18 +40,17 @@ for ID in SHARD_IDS:
         VALIDATOR_SHARD_ASSIGNMENT[v] = ID
 print(VALIDATOR_SHARD_ASSIGNMENT)
 
-
 TTL_CONSTANT = 5
 assert TTL_CONSTANT > 0
 
-NUM_TRANSACTIONS = 50
+NUM_TRANSACTIONS = 0
 
 # Experiment parameters
 NUM_ROUNDS = 1000
 NUM_WITHIN_SHARD_RECEIPTS_PER_ROUND = 5
 NUM_BETWEEN_SHARD_RECEIPTS_PER_ROUND = 5
 MEMPOOL_DRAIN_RATE = 1
-SWITCH_ROUND = 100000
+SWITCH_ROUND = 5
 
 # Instant broadcast
 FREE_INSTANT_BROADCAST = True
@@ -84,7 +83,7 @@ CONSENSUS_MESSAGE_HEIGHTS_TO_DISPLAY_IN_ROOT = 25
 RESTRICT_ROUTING = True
 
 # Define message routes in a dict {source: [destination1, destination2, ...]}
-if FLAG:
+if not ORBIT_MODE:
     MSG_ROUTES = {3: [7], 7: [3]}
 else:
     MSG_ROUTES = {1: [0], 0: [1]}

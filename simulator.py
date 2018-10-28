@@ -8,14 +8,15 @@ from blocks import Block
 from validator import Validator
 from validator import ConsensusMessage
 from validator import UnresolvedDeps
+from validator import have_made_block
 from generate_transactions import gen_alice_and_bob_tx
 
 from config import *
 
-def add_switch_message(parent_shard, child_to_become_parent, child_to_move_down, position):
+def add_switch_message(parent_shard, child_to_become_parent, shard_to_move_down, position):
     global mempools
-
-    mempools[parent_shard].insert(position, {'opcode': 'switch', 'child_to_become_parent': child_to_become_parent, 'child_to_move_down': child_to_move_down})
+    # mempools[parent_shard].insert(position, {'opcode': 'switch', 'child_to_become_parent': child_to_become_parent, 'child_to_move_down': child_to_move_down})
+    mempools[parent_shard].insert(position, {'opcode': 'switch', 'child_to_become_parent': child_to_become_parent, 'shard_to_move_down': shard_to_move_down})
 
 # Setup
 GENESIS_BLOCKS = {}
@@ -87,7 +88,9 @@ for i in range(NUM_ROUNDS):
         next_proposer = random.choice(SHARD_VALIDATOR_ASSIGNMENT[rand_ID])
 
     if i == SWITCH_ROUND:
-        add_switch_message(1, 4, 3, 1)
+        for j in range(100000):
+            print("ADDING SWITCH")
+        add_switch_message(0, 1, 0, SWITCH_ROUND + 1)
 
     # MAKE CONSENSUS MESSAGE
     new_message = validators[next_proposer].make_new_consensus_message(rand_ID, mempools, drain_amount=MEMPOOL_DRAIN_RATE, genesis_blocks=GENESIS_BLOCKS)
@@ -154,6 +157,13 @@ for i in range(NUM_ROUNDS):
                         new_received = True
                     except UnresolvedDeps:
                         pass
+
+    blocks = watcher.get_blocks_from_consensus_messages()
+    for b in blocks:
+        assert have_made_block(b)
+
+    for v in validators.values():
+        assert v.check_have_made_blocks()
 
     # REPORTING:
     print("Step: ", i)

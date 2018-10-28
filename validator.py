@@ -146,7 +146,7 @@ class Validator:
         global BLOCKS
 
         # First, the previous block pointer:
-        prevblock = copy.deepcopy(self.make_fork_choice(shard_ID, genesis_blocks))
+        prevblock = self.make_fork_choice(shard_ID, genesis_blocks)
         assert prevblock.shard_ID == shard_ID, "expected consistent IDs"
 
         new_received_log = {}
@@ -228,7 +228,7 @@ class Validator:
                     print("SWITCHTX")
 
 
-                if ORBIT_MODE:    
+                if ORBIT_MODE:
                     new_txn_log = prevblock.txn_log + [switch_tx]
 
                     child_to_become_parent = mempools[shard_ID][num_prev_txs]['child_to_become_parent']
@@ -246,6 +246,8 @@ class Validator:
                     for ID in SHARD_IDS:
                         if ID != child_to_become_parent:
                             new_sent_log[ID] = prevblock.sent_log[ID]
+
+                    new_received_log = prevblock.received_log
 
                     new_child_IDs = []
                     new_parent_ID = child_to_become_parent
@@ -315,7 +317,7 @@ class Validator:
                 new_parent_ID = None
 
                 new_txn_log = prevblock.txn_log
-                # new_sent_log unchanged    
+                new_sent_log = prevblock.sent_log
 
             new_block = Block(shard_ID, prevblock, True, new_txn_log, new_sent_log, new_received_log, new_sources, new_parent_ID, new_child_IDs, new_routing_table, prevblock.vm_state)
 

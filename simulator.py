@@ -87,10 +87,17 @@ for i in range(NUM_ROUNDS):
         rand_ID = random.choice(SHARD_IDS)
         next_proposer = random.choice(SHARD_VALIDATOR_ASSIGNMENT[rand_ID])
 
-    if i == SWITCH_ROUND:
-        for j in range(100000):
-            print("ADDING SWITCH")
-        add_switch_message(0, 1, 0, SWITCH_ROUND + 1)
+    for k in range(10):
+        if i == SWITCH_ROUND + 20*k:
+            for j in range(100000):
+                print("ADDING SWITCH")
+            add_switch_message(0, 1, 0, SWITCH_ROUND + 1)
+
+
+        if i == SWITCH_ROUND + 10 + 20*k:
+            for j in range(100000):
+                print("ADDING SWITCH")
+            add_switch_message(1, 0, 1, SWITCH_ROUND + 11)
 
     # MAKE CONSENSUS MESSAGE
     new_message = validators[next_proposer].make_new_consensus_message(rand_ID, mempools, drain_amount=MEMPOOL_DRAIN_RATE, genesis_blocks=GENESIS_BLOCKS)

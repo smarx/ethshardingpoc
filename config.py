@@ -53,7 +53,7 @@ MEMPOOL_DRAIN_RATE = 1
 SWITCH_ROUND = 5
 
 # Instant broadcast
-FREE_INSTANT_BROADCAST = False
+FREE_INSTANT_BROADCAST = True
 
 # Validity check options
 VALIDITY_CHECKS_OFF = False

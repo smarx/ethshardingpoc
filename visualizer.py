@@ -5,7 +5,7 @@ mpl.use('TkAgg')
 import matplotlib.pyplot as plt
 import numpy as np
 import networkx as nx
-from blocks import Block, SwitchMessage_BecomeAParent, SwitchMessage_ChangeParent
+from blocks import Block, SwitchMessage_BecomeAParent, SwitchMessage_ChangeParent, SwitchMessage_Orbit
 from config import *
 import copy
 
@@ -83,21 +83,29 @@ def sort_blocks_by_shard_height(fork_choice_by_shard):
         if shard_ID not in all_shards:
             if extra_height not in ret:
                 ret[extra_height] = []
-            ret[extra_height].append(block_by_shard[shard_ID])
+            ret[extra_height].append(fork_choice_by_shard[shard_ID])
 
     return ret
 
 
 # Implements a depth first search of the shard tree
 # The order of the search is determined by 'sorted' of shard_IDs
-def recur_sort_shards(fork_choice_by_shard, sorted_children, height, fork_choice_by_height):
+def recur_sort_shards(fork_choice_by_shard, sorted_children, height, fork_choice_by_height, on_stack=None):
     if sorted_children == []:
         return
+
+    if on_stack is None:
+        on_stack = set()
 
     for b in sorted_children:
         assert isinstance(b, Block), "expected children to be blocks"
 
     for child in sorted_children:
+        if child in on_stack:
+            continue
+
+        on_stack.add(child)
+
         if height not in fork_choice_by_height.keys():
             fork_choice_by_height[height] = [child]
         else:
@@ -108,7 +116,9 @@ def recur_sort_shards(fork_choice_by_shard, sorted_children, height, fork_choice
         for i in range(len(sorted_child_IDs)):
             children.append(fork_choice_by_shard[sorted_child_IDs[i]])
 
-        recur_sort_shards(fork_choice_by_shard, children, height + 1, fork_choice_by_height)
+        recur_sort_shards(fork_choice_by_shard, children, height + 1, fork_choice_by_height, on_stack)
+
+        on_stack.remove(child)
 
     return fork_choice_by_height
 
@@ -451,7 +461,7 @@ def report(watcher, round_number, genesis_blocks):
 
                 COLOR_ID = hash((new_received_message.TTL, new_received_message.payload, new_received_message.target_shard_ID)) % (len(RECEIVED_GRAPH_COLORS) - 1) + 1
 
-                if isinstance(new_received_message, (SwitchMessage_BecomeAParent, SwitchMessage_ChangeParent)):
+                if isinstance(new_received_message, (SwitchMessage_BecomeAParent, SwitchMessage_ChangeParent, SwitchMessage_Orbit)):
                     COLOR_ID = 0
                 else: # XXX
                     pass

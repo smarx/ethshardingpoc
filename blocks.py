@@ -68,6 +68,21 @@ class SwitchMessage_BecomeAParent(Message):
         return self.hash == message.hash
 
 
+class SwitchMessage_Orbit(Message):
+    def __init__(self, base, TTL, target_shard_ID, new_child_ID, new_parent_ID, new_child_source):
+        super(SwitchMessage_Orbit, self).__init__(base, TTL, target_shard_ID, None)
+        self.new_child_ID = new_child_ID
+        self.new_child_source = new_child_source
+        self.new_parent_ID = new_parent_ID
+        self.hash = rand.randint(1, 1000000)
+
+    def __hash__(self):
+        return self.hash
+
+    def __eq__(self, message):
+        return self.hash == message.hash
+
+
 class SwitchMessage_ChangeParent(Message):
     def __init__(self, base, TTL, target_shard_ID, new_parent_ID, new_parent_source):
         super(SwitchMessage_ChangeParent, self).__init__(base, TTL, target_shard_ID, None)
@@ -144,14 +159,14 @@ class Block:
         # otherwise it's not changing neighbors
         return False
 
-    def is_in_chain(self, block):
+    def is_in_chain(self, block, strict=False):
         assert isinstance(block, Block), "expected block"
         #assert block.is_valid(), "expected block to be valid"
         if self.shard_ID != block.shard_ID:
             return False
 
         if self == block:
-            return True
+            return not strict
 
         if block.height >= self.height:
             return False
@@ -294,6 +309,7 @@ class Block:
                     return False, "received message with base on different shard"
 
             # sources of messages received from shard i are on shard i
+            assert ID in self.sources, "ID not in self.sources, ID: %s, self.sources: %s, shard_ID: %s" % (ID, self.sources, self.shard_ID)
             if self.sources[ID] is not None:
                 if self.sources[ID].shard_ID != ID:
                     return False, "source for shard i on shard j != i"
@@ -394,6 +410,7 @@ class Block:
             if ID is None:
                 continue
 
+            assert ID in self.sources, "ID not in self.sources, ID: %s, self.sources: %s, shard_ID: %s" % (ID, self.sources, shard_ID)
             if self.sources[ID] is not None:
 
                 source = self.sources[ID]
@@ -409,7 +426,7 @@ class Block:
                         continue
                     # a message incoming (but not yet received) to this shard is expired if...
                     if m.base.height + m.TTL <= self.height:
-                        return False, "expected all expired messages in source to be recieved"
+                        return False, "expected all expired messages in source to be recieved, shard_ID: %s ID=%s" % (self.shard_ID, ID)
 
                 # our sent messages are received by the TTL as seen from our sources
                 for m in self.sent_log[ID]:  # inefficient

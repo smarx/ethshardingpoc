@@ -18,7 +18,7 @@ def is_block_filtered(child, parent_fork_choice=None):
     assert isinstance(parent_fork_choice, Block), "Expected parent fork choice to be a block"
 
     parent_ID = parent_fork_choice.shard_ID
-    assert parent_ID == child.prevblock.parent_ID, "Expected parent fork choice to be on the parent shard of the prevblock"
+    #assert parent_ID == child.prevblock.parent_ID, "Expected parent fork choice to be on the parent shard of the prevblock"
 
     child_ID = child.shard_ID
 
@@ -67,40 +67,48 @@ def update_forks(block):
     else:
         return False
 
-def fork_choice(target_shard_ID, starting_block, blocks, block_weights, genesis_blocks, first=True, filter_block=None):
+def fork_choice(target_shard_ID, starting_block, blocks, block_weights, genesis_blocks, current=None):
+    if current is None:
+        current = {}
+        for shard_ID, block in genesis_blocks.items():
+            current[shard_ID] = block
 
-    global forks
-    global already_jumped
-    if first:
-        forks = {0 : genesis_blocks[0], 1 : genesis_blocks[1]}
-        already_jumped = []
+    # some unnecessary redundancy
+    assert starting_block.shard_ID == target_shard_ID
+    assert current[target_shard_ID] == starting_block
 
-    if target_shard_ID == 1 and starting_block == genesis_blocks[1] and filter_block is None:
-        return fork_choice(target_shard_ID, forks[0], blocks, block_weights, genesis_blocks,  False)
-
-    # get filtered children
     children = [b for b in [b for b in blocks if b.prevblock is not None] if b.prevblock == starting_block]
-    # children of parents with root parent IDs are not filtered
 
     if starting_block.parent_ID is not None:
+        the_source = starting_block.sources[starting_block.parent_ID]
+        assert the_source.agrees(current[starting_block.parent_ID])
+        if not current[starting_block.parent_ID].is_in_chain(the_source, strict=True):
+            fork_choice(starting_block.parent_ID, current[starting_block.parent_ID], blocks, block_weights, genesis_blocks, current)
+            if not current[starting_block.parent_ID].is_in_chain(the_source):
+                assert False
+
+            if current[target_shard_ID] != starting_block: # we ended up recursively calling back
+                old = current[target_shard_ID]
+                try_it = fork_choice(target_shard_ID, current[target_shard_ID], blocks, block_weights, genesis_blocks, current)
+                assert try_it == old
+                return current[target_shard_ID]
+
+        filter_block = current[starting_block.parent_ID]
+        additional_filter_block = None
+        if starting_block.prevblock is not None and starting_block.prevblock.parent_ID != starting_block.parent_ID and starting_block.prevblock.parent_ID not in starting_block.child_IDs and starting_block.prevblock.parent_ID is not None:
+            assert starting_block.prevblock.parent_ID == 1, starting_block.prevblock.parent_ID
+            additional_filter_block = current[starting_block.prevblock.parent_ID]
 
         filter_child = {}
         for c in children:
             filter_child[c] = is_block_filtered(c, filter_block)  # deals with filter_block = None by not filtering
+            if not filter_child[c] and additional_filter_block is not None:
+                filter_child[c] = is_block_filtered(c, additional_filter_block)
 
         children = [c for c in children if not filter_child[c]]
 
-    if len(children) == 0 and starting_block.shard_ID == target_shard_ID:
-       return starting_block
-
-    if len(children) == 0 and starting_block.shard_ID != target_shard_ID:
-        update_forks(starting_block)
-        update_forks(starting_block.sources[target_shard_ID])
-        already_jumped.append(starting_block.sources[target_shard_ID])
-        if starting_block.parent_ID is None:
-            return fork_choice(target_shard_ID, forks[target_shard_ID], blocks, block_weights, genesis_blocks, False, starting_block)
-        else:
-            return fork_choice(target_shard_ID, forks[target_shard_ID], blocks, block_weights, genesis_blocks, False)
+    if len(children) == 0:
+       return current[target_shard_ID]
 
     # scorekeeping stuff
     max_score = 0
@@ -119,15 +127,8 @@ def fork_choice(target_shard_ID, starting_block, blocks, block_weights, genesis_
             winning_child = c
             max_score = score
 
-    update_forks(winning_child)
+    assert winning_child.is_in_chain(current[target_shard_ID])
+    assert current[target_shard_ID] == starting_block
+    current[target_shard_ID] = winning_child
+    return fork_choice(target_shard_ID, winning_child, blocks, block_weights, genesis_blocks, current)
 
-    # case where we have a switch block winning in the root:
-    if winning_child.switch_block and starting_block.parent_ID is None:
-        update_forks(winning_child.sources[starting_block.child_IDs[0]])
-        return fork_choice(target_shard_ID, forks[starting_block.child_IDs[0]], blocks, block_weights, genesis_blocks, False, winning_child)
-
-    # case where we have a swich block winning in the child
-    if winning_child.switch_block and starting_block.parent_ID is not None:
-        return fork_choice(target_shard_ID, forks[winning_child.shard_ID], blocks, block_weights, genesis_blocks, False)
-
-    return fork_choice(target_shard_ID, forks[winning_child.shard_ID], blocks, block_weights, genesis_blocks, False, filter_block)

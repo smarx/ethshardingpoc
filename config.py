@@ -1,12 +1,19 @@
 import random as rand
 from web3 import Web3
 import copy
+import sys
 from collections import defaultdict
 
-ORBIT_MODE = True
+ORBIT_MODE = False
+if 'orbit' in sys.argv:
+    ORBIT_MODE = True
+# whether to generate more blocks in shards 0 and 1 (makes ORBITs happen faster)
+MORE_BLOCKS_IN = None #[0, 1, 3, 4] # create more blocks in these shards. Set to None to disable
+
+SWITCH_BLOCK_EXTRA = 2 # a multiplier for switch block weights (is added on top of regular weight)
 
 if not ORBIT_MODE:
-    INITIAL_TOPOLOGY = [[1, 2], [3, 4], [5], [], [], [6], [7], []]
+    INITIAL_TOPOLOGY = [[1, 2], [3, 4], [5], [], [], [6], []]
 else:
     INITIAL_TOPOLOGY = [[1], []]
 NUM_SHARDS = len(INITIAL_TOPOLOGY)
@@ -20,7 +27,7 @@ for i in range(NUM_VALIDATORS):
     VALIDATOR_NAMES.append(i)
 VALIDATOR_WEIGHTS = {}
 for v in VALIDATOR_NAMES:
-    VALIDATOR_WEIGHTS[v] = rand.uniform(5, 25)
+    VALIDATOR_WEIGHTS[v] = rand.uniform(7, 10)
 
 
 assert all([x > y for (y, lst) in enumerate(INITIAL_TOPOLOGY) for x in lst])
@@ -40,20 +47,25 @@ for ID in SHARD_IDS:
         VALIDATOR_SHARD_ASSIGNMENT[v] = ID
 print(VALIDATOR_SHARD_ASSIGNMENT)
 
-TTL_CONSTANT = 5
+TTL_CONSTANT = 1
+TTL_SWITCH_CONSTANT = 1
 assert TTL_CONSTANT > 0
 
 NUM_TRANSACTIONS = 0
 
 # Experiment parameters
 NUM_ROUNDS = 1000
-NUM_WITHIN_SHARD_RECEIPTS_PER_ROUND = 5
-NUM_BETWEEN_SHARD_RECEIPTS_PER_ROUND = 5
-MEMPOOL_DRAIN_RATE = 1
+NUM_WITHIN_SHARD_RECEIPTS_PER_ROUND = NUM_SHARDS * 5 // 2
+NUM_BETWEEN_SHARD_RECEIPTS_PER_ROUND = NUM_SHARDS * 7 // 2
+MEMPOOL_DRAIN_RATE = 5
+
+# In ORBIT_MODE the first orbit happens at SWITCH_ROUND, not at either of the ORBIT_ROUNDs
 SWITCH_ROUND = 5
+ORBIT_ROUND_1 = 45
+ORBIT_ROUND_2 = 85
 
 # Instant broadcast
-FREE_INSTANT_BROADCAST = True
+FREE_INSTANT_BROADCAST = False
 
 # Validity check options
 VALIDITY_CHECKS_OFF = False
@@ -84,6 +96,6 @@ RESTRICT_ROUTING = True
 
 # Define message routes in a dict {source: [destination1, destination2, ...]}
 if not ORBIT_MODE:
-    MSG_ROUTES = {3: [7], 7: [3]}
+    MSG_ROUTES = {3: [6], 6: [3]}
 else:
     MSG_ROUTES = {1: [0], 0: [1]}

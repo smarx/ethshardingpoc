@@ -55,10 +55,9 @@ class Message(object):
 
 
 class SwitchMessage_BecomeAParent(Message):
-    def __init__(self, base, TTL, target_shard_ID, new_child_ID, new_child_source):
+    def __init__(self, base, TTL, target_shard_ID, new_child_ID):
         super(SwitchMessage_BecomeAParent, self).__init__(base, TTL, target_shard_ID, None)
         self.new_child_ID = new_child_ID
-        self.new_child_source = new_child_source
         self.hash = rand.randint(1, 1000000)
 
     def __hash__(self):
@@ -69,10 +68,9 @@ class SwitchMessage_BecomeAParent(Message):
 
 
 class SwitchMessage_Orbit(Message):
-    def __init__(self, base, TTL, target_shard_ID, new_child_ID, new_parent_ID, new_child_source):
+    def __init__(self, base, TTL, target_shard_ID, new_child_ID, new_parent_ID):
         super(SwitchMessage_Orbit, self).__init__(base, TTL, target_shard_ID, None)
         self.new_child_ID = new_child_ID
-        self.new_child_source = new_child_source
         self.new_parent_ID = new_parent_ID
         self.hash = rand.randint(1, 1000000)
 
@@ -84,10 +82,9 @@ class SwitchMessage_Orbit(Message):
 
 
 class SwitchMessage_ChangeParent(Message):
-    def __init__(self, base, TTL, target_shard_ID, new_parent_ID, new_parent_source):
+    def __init__(self, base, TTL, target_shard_ID, new_parent_ID):
         super(SwitchMessage_ChangeParent, self).__init__(base, TTL, target_shard_ID, None)
         self.new_parent_ID = new_parent_ID
-        self.new_parent_source = new_parent_source
         self.hash = rand.randint(1, 1000000)       
 
     def __hash__(self):
@@ -133,6 +130,13 @@ class Block:
             self.height = self.prevblock.height + 1
 
 
+    def trace_history(self, other_shard_ID):
+        b = self
+        print("Tracing block from shard %s with sources from %s" % (self.shard_ID, other_shard_ID))
+        while b is not None:
+            print("%s(%s,%s) - " % (b.hash, b.sources[other_shard_ID].hash, b.switch_block), end='')
+            b = b.prevblock
+        print("")
 
     def __str__(self):
         return "Block(%d): shard_ID:%d height:%d" % (self.hash, self.shard_ID, self.height)
@@ -426,7 +430,9 @@ class Block:
                         continue
                     # a message incoming (but not yet received) to this shard is expired if...
                     if m.base.height + m.TTL <= self.height:
-                        return False, "expected all expired messages in source to be recieved, shard_ID: %s ID=%s" % (self.shard_ID, ID)
+                        self.trace_history(ID)
+                        source.trace_history(self.shard_ID)
+                        return False, "expected all expired messages in source to be recieved, shard_ID: %s ID=%s switch_block?: %s" % (self.shard_ID, ID, self.switch_block)
 
                 # our sent messages are received by the TTL as seen from our sources
                 for m in self.sent_log[ID]:  # inefficient

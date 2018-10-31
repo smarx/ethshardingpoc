@@ -189,7 +189,7 @@ class Validator:
             print(ID in new_child_IDs)
             print("ID == new_parent_IDs")
             print(ID == new_parent_ID)
-            assert temp_new_sources[ID].is_in_chain(prevblock.sources[ID]), "expected monotonic sources - error 0"
+            assert temp_new_sources[ID].is_in_chain(prevblock.sources[ID]), "expected monotonic sources - error 0, shard_ID: %s, ID: %s" % (shard_ID, ID)
 
             last_receive_log_length = len(prevblock.received_log[ID])
             if len(temp_new_sources[ID].sent_log[shard_ID]) > last_receive_log_length:
@@ -273,7 +273,7 @@ class Validator:
             print(ID in new_child_IDs)
             print("ID in new_parent_ID")
             print(ID == new_parent_ID)
-            assert prevblock.is_in_chain(new_sources[ID].sources[shard_ID]), "expected  - error 1"
+            assert prevblock.is_in_chain(new_sources[ID].sources[shard_ID]), "expected  - error 1, shard_ID: %s, ID: %s" % (shard_ID, ID)
 
         if switch_block:
 
@@ -305,7 +305,9 @@ class Validator:
                     new_child_IDs.remove(child_to_become_parent)
                     new_parent_ID = child_to_become_parent
 
-                    new_routing_table[child_to_become_parent] = child_to_become_parent
+                    for k, v in child_source.routing_table.items():
+                        assert k in new_routing_table
+                        del new_routing_table[k]
 
                 else:
                     assert switch_tx['opcode'] == 'switch'

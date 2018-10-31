@@ -18,7 +18,7 @@ def is_block_filtered(child, parent_fork_choice=None):
     assert isinstance(parent_fork_choice, Block), "Expected parent fork choice to be a block"
 
     parent_ID = parent_fork_choice.shard_ID
-    assert parent_ID == child.prevblock.parent_ID, "Expected parent fork choice to be on the parent shard of the prevblock"
+    #assert parent_ID == child.prevblock.parent_ID, "Expected parent fork choice to be on the parent shard of the prevblock"
 
     child_ID = child.shard_ID
 
@@ -88,18 +88,27 @@ def fork_choice(target_shard_ID, starting_block, blocks, block_weights, genesis_
                 assert False
 
             if current[target_shard_ID] != starting_block: # we ended up recursively calling back
+                old = current[target_shard_ID]
+                try_it = fork_choice(target_shard_ID, current[target_shard_ID], blocks, block_weights, genesis_blocks, current)
+                assert try_it == old
                 return current[target_shard_ID]
 
         filter_block = current[starting_block.parent_ID]
+        additional_filter_block = None
+        if starting_block.prevblock is not None and starting_block.prevblock.parent_ID != starting_block.parent_ID and starting_block.prevblock.parent_ID not in starting_block.child_IDs and starting_block.prevblock.parent_ID is not None:
+            assert starting_block.prevblock.parent_ID == 1, starting_block.prevblock.parent_ID
+            additional_filter_block = current[starting_block.prevblock.parent_ID]
 
         filter_child = {}
         for c in children:
             filter_child[c] = is_block_filtered(c, filter_block)  # deals with filter_block = None by not filtering
+            if not filter_child[c] and additional_filter_block is not None:
+                filter_child[c] = is_block_filtered(c, additional_filter_block)
 
         children = [c for c in children if not filter_child[c]]
 
     if len(children) == 0:
-       return starting_block
+       return current[target_shard_ID]
 
     # scorekeeping stuff
     max_score = 0
@@ -119,6 +128,7 @@ def fork_choice(target_shard_ID, starting_block, blocks, block_weights, genesis_
             max_score = score
 
     assert winning_child.is_in_chain(current[target_shard_ID])
+    assert current[target_shard_ID] == starting_block
     current[target_shard_ID] = winning_child
     return fork_choice(target_shard_ID, winning_child, blocks, block_weights, genesis_blocks, current)
 

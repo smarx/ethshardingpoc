@@ -426,7 +426,7 @@ class Block:
                         continue
                     # a message incoming (but not yet received) to this shard is expired if...
                     if m.base.height + m.TTL <= self.height:
-                        return False, "expected all expired messages in source to be recieved"
+                        return False, "expected all expired messages in source to be recieved, shard_ID: %s ID=%s" % (self.shard_ID, ID)
 
                 # our sent messages are received by the TTL as seen from our sources
                 for m in self.sent_log[ID]:  # inefficient

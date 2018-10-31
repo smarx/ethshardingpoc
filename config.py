@@ -8,7 +8,7 @@ ORBIT_MODE = False
 if 'orbit' in sys.argv:
     ORBIT_MODE = True
 # whether to generate more blocks in shards 0 and 1 (makes ORBITs happen faster)
-MORE_BLOCKS_IN = [0, 1, 3, 4] # create more blocks in these shards. Set to None to disable
+MORE_BLOCKS_IN = None #[0, 1, 3, 4] # create more blocks in these shards. Set to None to disable
 
 SWITCH_BLOCK_EXTRA = 2 # a multiplier for switch block weights (is added on top of regular weight)
 
@@ -55,14 +55,14 @@ NUM_TRANSACTIONS = 0
 
 # Experiment parameters
 NUM_ROUNDS = 1000
-NUM_WITHIN_SHARD_RECEIPTS_PER_ROUND = 5
-NUM_BETWEEN_SHARD_RECEIPTS_PER_ROUND = 5
-MEMPOOL_DRAIN_RATE = 1
+NUM_WITHIN_SHARD_RECEIPTS_PER_ROUND = NUM_SHARDS * 5 // 2
+NUM_BETWEEN_SHARD_RECEIPTS_PER_ROUND = NUM_SHARDS * 7 // 2
+MEMPOOL_DRAIN_RATE = 5
 
-# In ORBIT_MODE orbit happens at SWITCH_ROUND, not at either of the ORBIT_ROUNDs
+# In ORBIT_MODE the first orbit happens at SWITCH_ROUND, not at either of the ORBIT_ROUNDs
 SWITCH_ROUND = 5
-ORBIT_ROUND_1 = 50
-ORBIT_ROUND_2 = 150
+ORBIT_ROUND_1 = 45
+ORBIT_ROUND_2 = 85
 
 # Instant broadcast
 FREE_INSTANT_BROADCAST = False

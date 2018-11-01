@@ -17,6 +17,11 @@ def add_switch_message(parent_shard, child_to_become_parent, child_to_move_down,
     global mempools
     mempools[parent_shard].insert(position, {'opcode': 'switch', 'child_to_become_parent': child_to_become_parent, 'child_to_move_down': child_to_move_down})
 
+def add_inv_switch_message(initiating_shard, shard_to_become_parent, child_to_move_up, position):
+    global mempools
+    mempools[initiating_shard].insert(position, {'opcode': 'inv_switch', 'shard_to_become_parent': shard_to_become_parent, 'child_to_move_up': child_to_move_up})
+
+
 def add_orbit_message(parent_shard, child_to_become_parent, shard_to_move_down, position):
     mempools[parent_shard].insert(position, {'opcode': 'orbit', 'child_to_become_parent': child_to_become_parent, 'shard_to_move_down': shard_to_move_down})
 
@@ -95,22 +100,22 @@ for i in range(NUM_ROUNDS):
     if ORBIT_MODE:
         for k in range(10):
             if i == SWITCH_ROUND + 40*k:
-                add_orbit_message(0, 1, 0, SWITCH_ROUND + 1)
+                add_orbit_message(0, 1, 0, len(watcher.make_fork_choice(0, GENESIS_BLOCKS).txn_log) + 11)
 
 
             if i == SWITCH_ROUND + 20 + 40*k:
-                add_orbit_message(1, 0, 1, SWITCH_ROUND + 11)
+                add_orbit_message(1, 0, 1, len(watcher.make_fork_choice(1, GENESIS_BLOCKS).txn_log) + 11)
 
     else:
         if i == SWITCH_ROUND:
-            add_switch_message(1, 4, 3, SWITCH_ROUND)
+            add_switch_message(1, 4, 3, len(watcher.make_fork_choice(1, GENESIS_BLOCKS).txn_log) + 1)
 
         if not 'switch' in sys.argv:
             if i == ORBIT_ROUND_1:
-                add_orbit_message(0, 1, 0, ORBIT_ROUND_1)
+                add_orbit_message(0, 1, 0, len(watcher.make_fork_choice(0, GENESIS_BLOCKS).txn_log) + 1)
 
             if i == ORBIT_ROUND_2:
-                add_orbit_message(1, 0, 1, ORBIT_ROUND_2)
+                add_orbit_message(1, 0, 1, len(watcher.make_fork_choice(1, GENESIS_BLOCKS).txn_log) + 1)
 
 
     # MAKE CONSENSUS MESSAGE

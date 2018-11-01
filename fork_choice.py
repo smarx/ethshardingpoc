@@ -24,28 +24,34 @@ def is_block_filtered(child, parent_fork_choice=None):
 
     # filter condition for sources:
     if not parent_fork_choice.is_in_chain(child.sources[parent_ID]):  # c.sources[c.parent_ID] != parent_fork_choice_until_source:
+        print("Reason 1")
         return True
 
     # Fiter blocks that don't agree with parent source for child
     if not parent_fork_choice.sources[child_ID].agrees(child):
+        print("Reason 2")
         return True
 
     # Filter blocks that send messages that are not received and expired in parent fork choice
     for shard_message in child.sent_log[parent_ID]:
         if not parent_fork_choice.agrees(shard_message.base):
+            print("Reason 3")
             return True
 
         if shard_message not in parent_fork_choice.received_log[child_ID]:
             if shard_message.base.height + shard_message.TTL <= parent_fork_choice.height:
+                print("Reason 4. parent_ID: %s, shard_message.base.height: %s, parent_fork.h: %s. My block: %s, msg_base: %s" % (parent_ID, shard_message.base.height, parent_fork_choice.height, child.hash, shard_message.base.hash))
                 return True
 
     # Filter blocks that haven't received all expired messages from parent fork choice
     for shard_message in parent_fork_choice.sent_log[child_ID]:
         if not child.agrees(shard_message.base):
+            print("Reason 5")
             return True
 
         if shard_message not in child.received_log[parent_ID]:
             if shard_message.base.height + shard_message.TTL <= child.height:
+                print("Reason 6")
                 return True
 
     return False
@@ -100,10 +106,11 @@ def fork_choice(target_shard_ID, starting_block, blocks, block_weights, genesis_
             additional_filter_block = current[starting_block.prevblock.parent_ID]
 
         filter_child = {}
+        print("Start filtering blocks for block in shard %s" % target_shard_ID)
         for c in children:
             filter_child[c] = is_block_filtered(c, filter_block)  # deals with filter_block = None by not filtering
-            if not filter_child[c] and additional_filter_block is not None:
-                filter_child[c] = is_block_filtered(c, additional_filter_block)
+            #if not filter_child[c] and additional_filter_block is not None:
+            #    filter_child[c] = is_block_filtered(c, additional_filter_block)
 
         children = [c for c in children if not filter_child[c]]
 

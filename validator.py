@@ -193,13 +193,13 @@ class Validator:
 
             last_receive_log_length = len(prevblock.received_log[ID])
             if len(temp_new_sources[ID].sent_log[shard_ID]) > last_receive_log_length:
-                next_message = temp_new_sources[ID].sent_log[shard_ID][last_receive_log_length]
-                if isinstance(next_message, SwitchMessage_BecomeAParent) or isinstance(next_message, SwitchMessage_ChangeParent) or isinstance(next_message, SwitchMessage_Orbit):
-                    switch_source_ID = ID
-                    switch_source = temp_new_sources[ID]
-                    switch_message = next_message
-                    switch_block = True
-                    break
+                for next_message in temp_new_sources[ID].sent_log[shard_ID][last_receive_log_length:]:
+                    if isinstance(next_message, SwitchMessage_BecomeAParent) or isinstance(next_message, SwitchMessage_ChangeParent) or isinstance(next_message, SwitchMessage_Orbit):
+                        assert not switch_block
+                        switch_source_ID = ID
+                        switch_source = temp_new_sources[ID]
+                        switch_message = next_message
+                        switch_block = True
 
         # if we received a switch_message, do not initiate switch ourselves
         while switch_message and num_prev_txs < len(mempools[shard_ID]) and 'opcode' in mempools[shard_ID][num_prev_txs]:
@@ -273,9 +273,21 @@ class Validator:
             print(ID in new_child_IDs)
             print("ID in new_parent_ID")
             print(ID == new_parent_ID)
-            assert prevblock.is_in_chain(new_sources[ID].sources[shard_ID]), "expected  - error 1, shard_ID: %s, ID: %s" % (shard_ID, ID)
+            try:
+                assert prevblock.is_in_chain(new_sources[ID].sources[shard_ID]), "expected  - error 1, shard_ID: %s, ID: %s, parent_ID: %s, prev_parent_ID: %s, switch_block: %s" % (shard_ID, ID, new_parent_ID, prevblock.parent_ID, switch_block)
+            except:
+                prevblock.trace_history(ID)
+                new_sources[ID].trace_history(shard_ID)
+                raise
 
         if switch_block:
+
+            # HACK: setting a source to something from which we didn't receive messages breaks
+            #   thigs during rotation.
+            for ID in SHARD_IDS:
+                while len(new_sources[ID].sent_log[shard_ID]) > len(prevblock.received_log[ID]):
+                    assert new_sources[ID] != prevblock.sources[ID]
+                    new_sources[ID] = new_sources[ID].prevblock
 
             if switch_tx is not None:
 
@@ -292,7 +304,7 @@ class Validator:
                     new_sources[shard_to_move_down] = prevblock
                     assert shard_to_move_down == prevblock.shard_ID
 
-                    msg1 = SwitchMessage_Orbit(child_source, TTL_SWITCH_CONSTANT, child_to_become_parent, shard_to_move_down, None, root_fork_choice)
+                    msg1 = SwitchMessage_Orbit(child_source, TTL_SWITCH_CONSTANT, child_to_become_parent, shard_to_move_down, None)
 
                     new_sent_log[child_to_become_parent] = prevblock.sent_log[child_to_become_parent] + [msg1]
                     for ID in SHARD_IDS:
@@ -319,8 +331,8 @@ class Validator:
                     fork_choice_of_child_to_become_parent = self.make_fork_choice(child_to_become_parent, genesis_blocks)  # new_sources[child_to_become_parent]
                     fork_choice_of_child_to_move_down = self.make_fork_choice(child_to_move_down, genesis_blocks)  # new_sources[child_to_move_down]
 
-                    msg1 = SwitchMessage_BecomeAParent(fork_choice_of_child_to_become_parent, TTL_SWITCH_CONSTANT, child_to_become_parent, child_to_move_down, fork_choice_of_child_to_move_down)
-                    msg2 = SwitchMessage_ChangeParent(fork_choice_of_child_to_move_down, TTL_SWITCH_CONSTANT, child_to_move_down, child_to_become_parent, fork_choice_of_child_to_become_parent)
+                    msg1 = SwitchMessage_BecomeAParent(fork_choice_of_child_to_become_parent, TTL_SWITCH_CONSTANT, child_to_become_parent, child_to_move_down)
+                    msg2 = SwitchMessage_ChangeParent(fork_choice_of_child_to_move_down, TTL_SWITCH_CONSTANT, child_to_move_down, child_to_become_parent)
 
                     # they have the switch messages in the sent message queues
                     new_sent_log[child_to_become_parent] = prevblock.sent_log[child_to_become_parent] + [msg1]
@@ -349,10 +361,51 @@ class Validator:
                     # sources unchanged
 
             elif switch_message is not None:
-
-                new_received_log[switch_source_ID] = prevblock.received_log[switch_source_ID] + [switch_message]
+                #new_received_log[switch_source_ID] = prevblock.received_log[switch_source_ID] + [switch_message]
 
                 new_sources[switch_source_ID] = switch_source.first_block_with_message_in_sent_log(shard_ID, switch_message)
+
+                # COPYPASTE=====
+                newly_received_messages = {}
+                for ID in SHARD_IDS:
+                    newly_received_messages[ID] = []
+                for ID in SHARD_IDS:
+                    if ID == shard_ID:
+                        continue
+
+                    prev_received_log_length = len(prevblock.received_log[ID])
+                    while(len(newly_received_messages[ID]) < len(new_sources[ID].sent_log[shard_ID]) - prev_received_log_length):
+                        log_length = len(newly_received_messages[ID])
+                        new_message = new_sources[ID].sent_log[shard_ID][log_length + prev_received_log_length]
+                        newly_received_messages[ID].append(new_message)
+
+
+
+                new_received_log = {}
+                for ID in SHARD_IDS:
+                    new_received_log[ID] = prevblock.received_log[ID] + newly_received_messages[ID]
+
+                new_sent_messages = {}  # for now we're going to fill this with routed messages
+                for ID in SHARD_IDS:
+                    new_sent_messages[ID] = []
+                for ID in neighbor_shard_IDs:
+                    for m in newly_received_messages[ID]:
+                        if m.target_shard_ID == shard_ID:
+                            pass # TODO: we are not processing payloads here, is it important?
+                        else:
+                            next_hop_ID = self.next_hop(new_routing_table, m.target_shard_ID)
+                            if next_hop_ID is not None:
+                                assert next_hop_ID in prevblock.child_IDs, "shard_ID: %s, destination: %s, next_hop: %s, children: %s" % (shard_ID, ID, next_hop_ID, prevblock.child_IDs)
+                            else:
+                                next_hop_ID = new_parent_ID
+                            assert next_hop_ID is not None
+                            new_sent_messages[next_hop_ID].append(Message(new_sources[next_hop_ID], m.TTL, m.target_shard_ID, m.payload))
+
+                new_sent_log = {}
+                for ID in SHARD_IDS:
+                    new_sent_log[ID] = prevblock.sent_log[ID] + new_sent_messages[ID]
+                # //COPYPASTE=====
+
                 print("switch_source", switch_source)
                 print("switch_message", switch_message)
                 print("switch_source_ID", switch_source_ID)
@@ -365,18 +418,16 @@ class Validator:
                 if isinstance(switch_message, (SwitchMessage_BecomeAParent, SwitchMessage_Orbit)):
                     if switch_message.new_child_ID not in new_child_IDs:
                         new_child_IDs.append(switch_message.new_child_ID)
-                    for ID in switch_message.new_child_source.routing_table.keys():
+                    for ID in new_sources[switch_message.new_child_ID].routing_table.keys():
                         new_routing_table[ID] = switch_message.new_child_ID
                 if isinstance(switch_message, (SwitchMessage_ChangeParent, SwitchMessage_Orbit)):
                     new_parent_ID = switch_message.new_parent_ID
 
                 new_txn_log = prevblock.txn_log
-                new_sent_log = prevblock.sent_log
 
             else:
                 assert False
 
-            print(("KEK", new_sources))
             new_block = Block(shard_ID, prevblock, True, new_txn_log, new_sent_log, new_received_log, new_sources, new_parent_ID, new_child_IDs, new_routing_table, prevblock.vm_state)
 
             assert new_block.switch_block
@@ -458,7 +509,7 @@ class Validator:
         newly_received_messages = {}
         for ID in SHARD_IDS:
             newly_received_messages[ID] = []
-        for ID in neighbor_shard_IDs:
+        for ID in SHARD_IDS:
             if ID == shard_ID:
                 continue
 
